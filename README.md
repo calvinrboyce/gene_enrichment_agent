@@ -6,7 +6,7 @@ A comprehensive Python package for performing gene enrichment analysis using mul
 
 1. Clone this repository:
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/calvinrboyce/gene_enrichment_agent.git
    cd gene_enrichment_agent
    ```
 
