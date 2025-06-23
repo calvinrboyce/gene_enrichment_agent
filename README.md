@@ -28,7 +28,7 @@ A comprehensive Python package for performing gene enrichment analysis using mul
    ```
 
 ## Usage
-AI synthesis requires an API key to access OpenAI's models. API keys can be obtained by PIs or other researchers by setting up an organization at [platform.openai.com](https://platform.openai.com) and adding an API key at [platform.openai.com/settings/organization/api-keys](https://platform.openai.com/settings/organization/api-keys). Note that using more sophisticated models beyond the default may require organization verification and you may have to earn a higher usage tier with OpenAI.
+AI synthesis requires an API key to access OpenAI's models. API keys can be obtained by PIs or other researchers by setting up an organization at [platform.openai.com](https://platform.openai.com) and adding an API key at [platform.openai.com/settings/organization/api-keys](https://platform.openai.com/settings/organization/api-keys). Note that using more sophisticated models beyond the default may require organization verification and you may have to earn a higher usage tier with OpenAI. With the default model you can expect to spend <$0.03 per gene list
 
 ### Basic Usage
 
