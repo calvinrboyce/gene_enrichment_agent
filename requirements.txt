@@ -1,0 +1,7 @@
+openai>=1.0.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+pytest>=8.0.0
+biopython>=1.82
+gprofiler-official>=1.0.0
+openpyxl>=3.1.5

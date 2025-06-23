@@ -1,0 +1,30 @@
+# Virtual environment
+venv/
+env/
+ENV/
+
+# Python cache files
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*$py.class
+*.so
+
+# Test files
+test.py
+
+# Environment variables
+.env
+
+# Results directories (optional - uncomment if you don't want to track results)
+gene_enrichment_analysis_results/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db 
