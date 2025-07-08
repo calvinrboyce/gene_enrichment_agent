@@ -10,7 +10,7 @@ from openpyxl.styles import Font, Alignment
 class SummarizeAnalyzer:
     """Class for summarizing gene enrichment analysis results."""
 
-    def __init__(self, api_key: str, model: str = "o3"):
+    def __init__(self, api_key: str, model: str = "gpt-4.1-mini"):
         """Initialize the summarize analyzer.
         Args:
             api_key: OpenAI API key
@@ -83,14 +83,14 @@ class SummarizeAnalyzer:
         Your task is to analyze these enrichment results and arrange them into functional themes.
         {'You should focus on themes that involve genes towards the top of the differential expression list.' if ranked else ''}
         Feel free to delete any terms that don't fit a theme.
-        You should include literature terms in themes as they fit, but your final theme should just be a Literature Findings theme.
+        You should include literature terms in themes as they fit, but your final theme should just be a "Literature Findings" theme.
 
         You will return a list of themes with the following attributes:
         * theme: The name of the theme
         * description: A brief description of the function of the theme and why you identified it
         * barcodes: A list of barcodes, unique identifiers for the terms that are associated with the theme
 
-        You will also provide a summary of the results, including a high level overview of what these cells are enriched for.
+        You will also provide a summary of the results, including a high level overview of what this gene list is enriched for.
 
         Guidelines:
         * Focus on biological meaning rather than technical categories
@@ -101,7 +101,7 @@ class SummarizeAnalyzer:
         response = self.client.responses.parse(
             model=self.summarize_model,
             input=[
-                {"role": "system", "content": "You are an expert in bioinformatics, immunology, and oncology specializing in gene enrichment analysis."},
+                {"role": "system", "content": "You are an expert in bioinformatics, immunology, molecular biology, and oncology specializing in gene enrichment analysis."},
                 {"role": "user", "content": prompt},
                 {"role": "user", "content": 'Context: ' + context},
                 {"role": "user", "content": 'Genes: ' + ';'.join(genes)},
@@ -212,6 +212,7 @@ class SummarizeAnalyzer:
                             email: str,
                             search_terms: List[str],
                             context: str,
+                            analysis_name: str,
                             results_dir: str) -> str:
         """Synthesize themed results into an Excel file with multiple sheets.
         
@@ -226,6 +227,7 @@ class SummarizeAnalyzer:
             email: Email provided
             search_terms: List of search terms provided
             context: Context provided
+            analysis_name: Name of the analysis
             results_dir: String with path to results
                 
         Returns:
@@ -443,6 +445,6 @@ class SummarizeAnalyzer:
 
         
         # Save the workbook
-        output_path = f"{results_dir}/enrichment_analysis.xlsx"
+        output_path = f"{results_dir}/{analysis_name}_enrichment_analysis.xlsx"
         wb.save(output_path)
         return output_path 

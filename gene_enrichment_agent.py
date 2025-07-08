@@ -4,6 +4,7 @@ import os
 import json
 from typing import List, Dict, Any
 from datetime import datetime
+import re
 
 from src.enrichment_tools import ToppFunAnalyzer, GProfilerAnalyzer, EnrichrAnalyzer
 from src.literature import LiteratureAnalyzer
@@ -72,12 +73,17 @@ class GeneEnrichmentAgent:
         """
         # Create timestamped directory for this run
         timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-        run_dir = os.path.join(self.results_dir, analysis_name.replace(' ', '_') if analysis_name else f"run_{timestamp}")
+        safe_analysis_name = analysis_name if analysis_name else f"run_{timestamp}"
+        run_dir = os.path.join(self.results_dir, safe_analysis_name)
         os.makedirs(self.results_dir, exist_ok=True)
         os.makedirs(run_dir, exist_ok=True)
 
+        # Helper to prefix filenames
+        def prefix_filename(base):
+            return f"{run_dir}/{safe_analysis_name}_{base}.json"
+
         # Save input parameters
-        with open(f"{run_dir}/input_params.json", 'w') as f:
+        with open(prefix_filename("input_params"), 'w') as f:
             json.dump({
                 "genes": genes,
                 "ranked": ranked,
@@ -88,23 +94,23 @@ class GeneEnrichmentAgent:
             }, f, indent=2)
 
         # Save enrichment results
-        with open(f"{run_dir}/enrichr_results.json", 'w') as f:
+        with open(prefix_filename("enrichr_results"), 'w') as f:
             json.dump(enrichr_results, f, indent=2)
-        with open(f"{run_dir}/toppfun_results.json", 'w') as f:
+        with open(prefix_filename("toppfun_results"), 'w') as f:
             json.dump(toppfun_results, f, indent=2)
-        with open(f"{run_dir}/gprofiler_results.json", 'w') as f:
+        with open(prefix_filename("gprofiler_results"), 'w') as f:
             json.dump(gprofiler_results, f, indent=2)
 
         # Save literature results
-        with open(f"{run_dir}/literature_results.json", 'w') as f:
+        with open(prefix_filename("literature_results"), 'w') as f:
             json.dump(literature_results, f, indent=2)
 
         # Save themed results
-        with open(f"{run_dir}/themed_results.json", 'w') as f:
+        with open(prefix_filename("themed_results"), 'w') as f:
             json.dump(themed_results, f, indent=2)
 
         # Generate final analysis
-        self.summarize.synthesize_analysis(themed_results, genes, email, search_terms, context, run_dir)
+        self.summarize.synthesize_analysis(themed_results, genes, email, search_terms, context, analysis_name, run_dir)
 
         return run_dir
 
@@ -134,6 +140,10 @@ class GeneEnrichmentAgent:
                     * terms: A list of terms from the various tools that were used to identify the theme
                 * summary: A summary of the results
         """
+        # Sanitize analysis name
+        if analysis_name:
+            analysis_name = re.sub(r'[ \\/:*?"<>|\'`~!@#$%^&\(\)]', '_', analysis_name)
+        
         # Run enrichment analyses
         print("Running enrichment analyses...")
         enrichr_results = self.enrichr.analyze(genes)

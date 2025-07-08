@@ -103,7 +103,7 @@ class LiteratureAnalyzer:
             try:
                 genes_to_search = query if isinstance(query, list) else [query]
                 terms = 'AND (' + '[MeSH Terms] OR '.join(search_terms) + '[MeSH Terms]) ' if len(search_terms)>0 else ''
-                search_query = f"({'[tw] OR '.join(genes_to_search)}[tw]) {terms}AND 2020:3000[PDAT]"
+                search_query = f"({'[tw] OR '.join(genes_to_search)}[tw]) {terms}AND 2015:3000[PDAT]"
                 retmax = self.max_papers if isinstance(query, list) else self.papers_per_gene
                 
                 # Search PubMed
