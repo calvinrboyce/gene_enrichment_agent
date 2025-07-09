@@ -173,4 +173,25 @@ Main class for running gene enrichment analysis workflows.
 
 #### Methods
 
-- `run_analysis(genes, email, background_genes=[], ranked=True, search_terms=[], context="None", save_results=True, analysis_name=None)`: Run complete analysis workflow
+##### `run_analysis(genes, email, background_genes=[], ranked=True, search_terms=[], context="None", save_results=True, analysis_name=None)`
+
+Run the complete gene enrichment analysis workflow.
+
+**Parameters:**
+- `genes` (List[str]): List of gene symbols to analyze (required)
+- `email` (str): Email address for NCBI's reference (required for literature search)
+- `background_genes` (List[str]): List of background genes to use for enrichment analysis (default: [])
+- `ranked` (bool): Whether the genes are ranked by differential expression (default: True)
+- `search_terms` (List[str]): List of search terms to use in literature search (default: [])
+- `context` (str): Context of where the genes came from and what you're studying (default: "None")
+- `save_results` (bool): Whether to save results to files (default: True)
+- `analysis_name` (str): Name for the analysis run, used in file naming (default: None)
+
+**Returns:**
+- `Dict[str, Any]`: Themed results dictionary containing:
+  - `themes`: List of identified biological themes, each with:
+    - `theme`: Theme name
+    - `description`: Description of the theme's function and identification rationale
+    - `confidence`: Confidence score (0-1)
+    - `terms`: List of enrichment terms that contributed to theme identification
+  - `summary`: Comprehensive analysis summary
