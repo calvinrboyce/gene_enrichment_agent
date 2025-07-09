@@ -29,12 +29,12 @@ class GProfilerAnalyzer:
 
         self.shortlist_categories = ['GO:BP', 'GO:MF', 'GO:CC', 'KEGG', 'TF']
 
-    def analyze(self, genes: List[str]) -> Dict[str, Any]:
+    def analyze(self, genes: List[str], background_genes: List[str] = []) -> Dict[str, Any]:
         """Run gProfiler enrichment analysis and organize results by source.
         
         Args:
             genes: List of gene symbols to analyze
-            
+            background_genes: List of background genes to use for the enrichment analysis
         Returns:
             Dict containing:
                 - results: Organized results by source (GO:BP, GO:MF, GO:CC, etc.)
@@ -47,7 +47,7 @@ class GProfilerAnalyzer:
         if not genes:
             raise ValueError("Gene list cannot be empty")
             
-        raw_results = self._run_query(genes)
+        raw_results = self._run_query(genes, background_genes)
         organized_results = self._process_results(raw_results)
         shortlist = self._generate_shortlist(organized_results)
         
@@ -56,11 +56,11 @@ class GProfilerAnalyzer:
             "shortlist": shortlist
         }
 
-    def _run_query(self, genes: List[str]) -> List[Dict[str, Any]]:
+    def _run_query(self, genes: List[str], background_genes: List[str] = []) -> List[Dict[str, Any]]:
         """Execute gProfiler enrichment query."""
         try:
             gp = GProfiler()
-            results = gp.profile(query=genes)
+            results = gp.profile(query=genes, background=background_genes)
             if not results:
                 raise ValueError("No results returned from gProfiler")
             return results

@@ -117,6 +117,7 @@ class GeneEnrichmentAgent:
     def run_analysis(self,
                      genes: List[str],
                      email: str,
+                     background_genes: List[str] = [],
                      ranked: bool=True,
                      search_terms: List[str] = [],
                      context: str = "None",
@@ -126,6 +127,7 @@ class GeneEnrichmentAgent:
         Args:
             genes: List of gene symbols to analyze
             email: Email address for NCBI's reference
+            background_genes: List of background genes to use for the enrichment analysis
             ranked: Whether the genes are ranked by differential expression
             search_terms: List of search terms to use in the literature search
             context: Context of where the genes came from and what you're studying
@@ -147,9 +149,9 @@ class GeneEnrichmentAgent:
         
         # Run enrichment analyses
         print("Running enrichment analyses...")
-        enrichr_results = self.enrichr.analyze(genes)
+        enrichr_results = self.enrichr.analyze(genes, background_genes)
         toppfun_results = self.toppfun.analyze(genes)
-        gprofiler_results = self.gprofiler.analyze(genes)
+        gprofiler_results = self.gprofiler.analyze(genes, background_genes)
 
         # Search literature
         print("Searching literature...")

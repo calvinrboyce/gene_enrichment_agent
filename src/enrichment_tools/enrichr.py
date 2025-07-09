@@ -14,6 +14,7 @@ class EnrichrAnalyzer:
         """
         self.terms_per_source = terms_per_source
         self.base_url = "https://maayanlab.cloud/Enrichr"
+        self.background_base_url = "https://maayanlab.cloud/speedrichr/api"
         self.sources = {
             "GO_Biological_Process_2025": "GO:BP",
             "GO_Molecular_Function_2025": "GO:MF",
@@ -26,12 +27,12 @@ class EnrichrAnalyzer:
             "GTEx_Tissue_Expression_Up": "GTEX"
         } if not sources else sources
 
-    def analyze(self, genes: List[str]) -> Dict[str, Any]:
+    def analyze(self, genes: List[str], background_genes: List[str] = []) -> Dict[str, Any]:
         """Run Enrichr enrichment analysis and organize results by source.
         
         Args:
             genes: List of gene symbols to analyze
-            
+            background_genes (optional): List of background genes to use for the enrichment analysis
         Returns:
             Dict containing:
                 - results: Organized results by source (GO:BP, GO:MF, GO:CC, KEGG)
@@ -42,18 +43,26 @@ class EnrichrAnalyzer:
             ValueError: If the gene list is empty or API call fails
             requests.RequestException: If there is an error communicating with the API
         """
+        # If background genes are provided, use the background base URL
+        with_background = len(background_genes) > 0
         if not genes:
             raise ValueError("Gene list cannot be empty")
             
         # Add gene list to Enrichr
-        user_list_id = self._upload_gene_list(genes)
+        user_list_id = self._upload_gene_list(genes, with_background)
+        if with_background:
+            background_id = self._upload_background_gene_list(background_genes)
         
         # Run enrichment analysis for each source
         organized_results = {}
         
         for source_name, source_key in self.sources.items():
             try:
-                source_results = self._run_enrichment(user_list_id, source_name)
+                if with_background:
+                    # print(f'Running enrichment analysis for {source_name} with background')
+                    source_results = self._run_background_enrichment(user_list_id, background_id, source_name)
+                else:
+                    source_results = self._run_enrichment(user_list_id, source_name)
                 organized_results[source_key] = self._process_results(source_results)
             except (ValueError, requests.RequestException) as e:
                 print(f"Warning: Error processing {source_key} results: {e}")
@@ -67,12 +76,12 @@ class EnrichrAnalyzer:
             "shortlist": shortlist
         }
 
-    def _upload_gene_list(self, genes: List[str]) -> str:
+    def _upload_gene_list(self, genes: List[str], with_background: bool = False) -> str:
         """Upload gene list to Enrichr.
         
         Args:
             genes: List of gene symbols
-            
+            with_background: Whether to use the background base URL
         Returns:
             User list ID from Enrichr
             
@@ -80,10 +89,14 @@ class EnrichrAnalyzer:
             ValueError: If the upload fails
             requests.RequestException: If there is an error communicating with the API
         """
+        if with_background:
+            base_url = self.background_base_url
+        else:
+            base_url = self.base_url
         try:
             response = requests.post(
-                f"{self.base_url}/addList",
-                files={'list': (None, '\n'.join(genes))},
+                f"{base_url}/addList",
+                files={'list': (None, '\n'.join(genes)), 'description': (None, 'Gene list')},
                 timeout=30
             )
             response.raise_for_status()
@@ -96,6 +109,35 @@ class EnrichrAnalyzer:
             
         except requests.RequestException as e:
             raise ValueError(f"Error uploading gene list to Enrichr: {str(e)}")
+        
+    def _upload_background_gene_list(self, genes: List[str]) -> str:
+        """Upload background gene list to Enrichr.
+        
+        Args:
+            genes: List of gene symbols
+        Returns:
+            Background ID from Enrichr
+            
+        Raises:
+            ValueError: If the upload fails
+            requests.RequestException: If there is an error communicating with the API
+        """
+        try:
+            response = requests.post(
+                f"{self.background_base_url}/addbackground",
+                data={'background': '\n'.join(genes)},
+                timeout=30
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            if 'backgroundid' not in result:
+                raise ValueError("Invalid response from Enrichr background upload API")
+                
+            return result['backgroundid']
+            
+        except requests.RequestException as e:
+            raise ValueError(f"Error uploading background gene list to Enrichr: {str(e)}")
 
     def _run_enrichment(self, user_list_id: str, source: str) -> List[List]:
         """Run enrichment analysis for a specific source.
@@ -115,6 +157,38 @@ class EnrichrAnalyzer:
             response = requests.get(
                 f"{self.base_url}/enrich",
                 params={'userListId': user_list_id, 'backgroundType': source},
+                timeout=30
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            if source not in result:
+                raise ValueError(f"Invalid response from Enrichr API for source: {source}")
+                
+            return result[source]
+            
+        except requests.RequestException as e:
+            raise ValueError(f"Error running Enrichr analysis: {str(e)}")
+        
+    def _run_background_enrichment(self, user_list_id: str, background_id: str, source: str) -> List[List]:
+        """Run enrichment analysis for a specific source with background genes.
+        
+        Args:
+            user_list_id: Enrichr user list ID
+            background_id: Enrichr background ID
+            source: Name of the gene set library to query
+            
+        Returns:
+            List of enrichment results
+            
+        Raises:
+            ValueError: If the API returns invalid data
+            requests.RequestException: If there is an error communicating with the API
+        """
+        try:
+            response = requests.post(
+                f"{self.background_base_url}/backgroundenrich",
+                data={'userListId': user_list_id, 'backgroundid': background_id, 'backgroundType': source},
                 timeout=30
             )
             response.raise_for_status()

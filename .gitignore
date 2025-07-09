@@ -16,7 +16,7 @@ test.py
 # Environment variables
 .env
 
-# Results directories (optional - uncomment if you don't want to track results)
+# Results directories
 gene_enrichment_analysis_results/
 
 # IDE files
