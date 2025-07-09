@@ -69,6 +69,7 @@ class SummarizeAnalyzer:
         class LLMTheme(BaseModel):
             theme: str
             description: str
+            confidence: float
             barcodes: List[int]
 
         class LLMThemedResults(BaseModel):
@@ -83,13 +84,16 @@ class SummarizeAnalyzer:
         Your task is to analyze these enrichment results and arrange them into functional themes.
         {'You should focus on themes that involve genes towards the top of the differential expression list.' if ranked else ''}
         Feel free to delete any terms that don't fit a theme.
-        You should include literature terms in themes as they fit, but your final theme should just be a "Literature Findings" theme.
+        For each theme, you should provide a confidence score between 0 and 1 (two decimal places), based on the strength of the evidence for the theme.
+        You should include literature terms in themes as they fit, but your final theme should just be a "Literature Findings" theme that highlights
+        interesting literature findings, especially if they mention multiple genes from the list.
 
         You will return a list of themes with the following attributes:
         * theme: The name of the theme
         * description: A brief description of the function of the theme and why you identified it
         * barcodes: A list of barcodes, unique identifiers for the terms that are associated with the theme
-
+        * confidence: A confidence score for the theme, between 0 and 1.
+                      When determining confidence, you should consider the number of terms in the theme, the p-values of the terms, and the number of genes in the theme.
         You will also provide a summary of the results, including a high level overview of what this gene list is enriched for.
 
         Guidelines:
@@ -112,6 +116,10 @@ class SummarizeAnalyzer:
 
         themed_results = response.output_parsed
 
+        # Sort themes by confidence
+        sorted_themes = sorted(themed_results.themes[:-1], key=lambda x: x.confidence, reverse=True)
+        themed_results.themes = sorted_themes + [themed_results.themes[-1]]
+
         # Get full terms from barcodes
         clean_themed_results = {
             'summary': themed_results.summary,
@@ -127,6 +135,7 @@ class SummarizeAnalyzer:
             temp_theme = {
                 'theme': theme.theme,
                 'description': theme.description,
+                'confidence': theme.confidence,
                 'terms': []
             }
             for barcode in theme.barcodes:
@@ -269,14 +278,20 @@ class SummarizeAnalyzer:
         summary_sheet['A11'].font = Font(bold=True)
         summary_sheet['B11'] = themed_results['summary']
         summary_sheet['B11'].alignment = Alignment(wrap_text=True)
-        summary_sheet['A13'] = "Themes:"
+        summary_sheet['A13'] = "Themes"
         summary_sheet['A13'].font = Font(bold=True)
+        summary_sheet['B13'] = "Name"
+        summary_sheet['B13'].font = Font(bold=True)
+        summary_sheet['C13'] = "Confidence"
+        summary_sheet['C13'].font = Font(bold=True)
         for i, theme in enumerate(themed_results['themes']):
-            summary_sheet['B'+str(13+i)] = theme['theme']
+            summary_sheet['B'+str(14+i)] = theme['theme']
+            summary_sheet['C'+str(14+i)] = theme['confidence']
         
         # Adjust column widths
         summary_sheet.column_dimensions['A'].width = 20
         summary_sheet.column_dimensions['B'].width = 100
+        summary_sheet.column_dimensions['C'].width = 10
         
         # Collect all tools first
         tool_set = set()
@@ -301,6 +316,10 @@ class SummarizeAnalyzer:
             # Add theme description
             theme_sheet['A2'] = theme['description']
             theme_sheet['A2'].alignment = Alignment(wrap_text=True)
+
+            # Add confidence
+            theme_sheet['B2'] = f"Confidence: {theme['confidence']:.2f}"
+            theme_sheet['B2'].font = Font(bold=True)
             
             # Add Terms header
             theme_sheet['A4'] = "Terms:"

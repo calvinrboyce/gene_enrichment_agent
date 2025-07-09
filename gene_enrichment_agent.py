@@ -137,6 +137,7 @@ class GeneEnrichmentAgent:
                 * themes: A list of themes with the following keys:
                     * theme: The name of the theme
                     * description: A brief description of the function of the theme and why you identified it
+                    * confidence: A confidence score for the theme, between 0 and 1
                     * terms: A list of terms from the various tools that were used to identify the theme
                 * summary: A summary of the results
         """

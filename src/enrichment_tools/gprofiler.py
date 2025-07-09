@@ -73,15 +73,8 @@ class GProfilerAnalyzer:
         
         for result in raw_results:
             source = result.get('source')
-            # Find the abbreviation for this source
-            abbrev = None
-            for full_name, abbreviation in self.sources.items():
-                if source == full_name:
-                    abbrev = abbreviation
-                    break
-            
-            if abbrev and abbrev in organized_results:
-                organized_results[abbrev].append(result)
+            if source in organized_results:
+                organized_results[source].append(result)
         
         for source in organized_results:
             organized_results[source].sort(key=lambda x: x['p_value'])
