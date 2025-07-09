@@ -51,6 +51,7 @@ genes = ["ANLN", "CENPF", "NUSAP1", "TOP2A", "CCNB1", "PRC1", "TPX2", "UBE2C", "
 results = agent.run_analysis(
     genes=genes,
     email="your.email@example.com",  # Required for NCBI literature search
+    background_genes=[],  # Optional background gene set for enrichment analysis
     ranked=True,  # Set to True if genes are ranked by differential expression
     search_terms=["cancer", "metastasis", "cell cycle"],  # Optional literature search terms
     context="This gene list characterizes a cluster of cells in a brain metastasis"
@@ -88,9 +89,30 @@ agent = GeneEnrichmentAgent(
     },
     terms_per_source=20,  # Number of terms to retrieve per source
     papers_per_gene=3,    # Number of papers to retrieve per gene
-    max_papers=15         # Number fo papers to retrieve for full gene list
+    max_papers=15         # Number of papers to retrieve for full gene list
+)
+
+# Example with background gene set
+background_genes = ["GENE1", "GENE2", "GENE3", ...]  # Your background gene set
+results = agent.run_analysis(
+    genes=genes,
+    email="your.email@example.com",
+    background_genes=background_genes,  # Use custom background for enrichment
+    ranked=True,
+    search_terms=["cancer", "metastasis"],
+    context="Analysis with custom background gene set"
 )
 ```
+
+### Background Gene Sets
+
+The agent supports custom background gene sets for enrichment analysis, which can improve the statistical significance and biological relevance of your results. When a background gene set is provided:
+
+- **Enrichr**: Uses the background genes as the reference set for statistical testing
+- **gProfiler**: Uses the background genes as the custom background for enrichment calculations
+- **ToppFun**: Currently uses default background (background genes not yet supported)
+
+**Note**: When no background genes are provided (empty list), the tools use their default reference sets.
 
 ### Working with Results
 
@@ -151,4 +173,4 @@ Main class for running gene enrichment analysis workflows.
 
 #### Methods
 
-- `run_analysis(genes, email, ranked=True, search_terms=[], context="None", save_results=True, analysis_name=None)`: Run complete analysis workflow
+- `run_analysis(genes, email, background_genes=[], ranked=True, search_terms=[], context="None", save_results=True, analysis_name=None)`: Run complete analysis workflow
