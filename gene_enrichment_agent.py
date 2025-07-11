@@ -110,7 +110,7 @@ class GeneEnrichmentAgent:
             json.dump(themed_results, f, indent=2)
 
         # Generate final analysis
-        self.summarize.synthesize_analysis(themed_results, genes, email, search_terms, context, analysis_name, run_dir)
+        self.summarize.synthesize_analysis(themed_results, genes, email, search_terms, context, safe_analysis_name, run_dir)
 
         return run_dir
 
@@ -145,7 +145,15 @@ class GeneEnrichmentAgent:
         """
         # Sanitize analysis name
         if analysis_name:
-            analysis_name = re.sub(r'[ \\/:*?"<>|\'`~!@#$%^&\(\)]', '_', analysis_name)
+            # Remove BOM and other invisible characters first
+            analysis_name = analysis_name.replace('\ufeff', '').replace('\u200b', '')
+            # Remove or replace characters that are problematic for file systems
+            # \/:*?"<>| are invalid on Windows, and some can cause issues on Unix systems
+            analysis_name = re.sub(r'[\\/:*?"<>|]', '_', analysis_name)
+            # Remove leading/trailing spaces and dots
+            analysis_name = analysis_name.strip(' .')
+            # Replace multiple consecutive underscores with a single one
+            analysis_name = re.sub(r'_+', '_', analysis_name)
         
         # Run enrichment analyses
         print("Running enrichment analyses...")
