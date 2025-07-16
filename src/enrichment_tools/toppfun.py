@@ -1,18 +1,17 @@
 """ToppFun enrichment analysis tool integration."""
 
-from typing import List, Dict, Any
+from collections import defaultdict
+from typing import List, Dict, Any, Tuple
 import requests
 
 class ToppFunAnalyzer:
     """Handler for ToppFun enrichment analysis."""
     
-    def __init__(self, sources: Dict[str, str] = {}, terms_per_source: int = 10):
+    def __init__(self, additional_sources: List[str] = []):
         """Initialize the ToppFun analyzer.
         Args:
-            sources: Dictionary of ToppFun sources to use
-            terms_per_source: Number of terms to retrieve per source
+            additional_sources: List of ToppFun sources to use in addition to the default sources
         """
-        self.terms_per_source = terms_per_source
         self.category_mapping = {
             'GeneOntologyMolecularFunction': 'GO:MF',
             'GeneOntologyBiologicalProcess': 'GO:BP',
@@ -28,14 +27,14 @@ class ToppFunAnalyzer:
             'GeneFamily': 'GENE_FAM',
             'Coexpression': 'COEXP',
             'CoexpressionAtlas': 'COEXP_ATLAS',
-            'ToppCell': 'CELL',
+            'ToppCell': 'ToppCell Atlas',
             'Computational': 'COMP',
             'MicroRNA': 'MIRNA',
             'Drug': 'DRUG',
             'Disease': 'DISEASE'
-        } if not sources else sources
+        }
 
-        self.shortlist_categories = ['GO:BP', 'GO:MF', 'GO:CC', 'TFBS', 'CELL']
+        self.additional_sources = [self.category_mapping[source] for source in additional_sources]
 
     def analyze(self, genes: List[str]) -> Dict[str, Any]:
         """Run ToppFun enrichment analysis and organize results by category.
@@ -59,12 +58,8 @@ class ToppFunAnalyzer:
         entrez_ids = self._lookup_entrez_ids(genes)
         raw_results = self._run_enrichment(entrez_ids)
         organized_results = self._process_results(raw_results)
-        shortlist = self._generate_shortlist(organized_results)
         
-        return {
-            "results": organized_results,
-            "shortlist": shortlist
-        }
+        return organized_results
 
     def _lookup_entrez_ids(self, genes: List[str]) -> List[int]:
         """Convert gene symbols to Entrez IDs using ToppGene API."""
@@ -109,61 +104,63 @@ class ToppFunAnalyzer:
         except requests.RequestException as e:
             raise ValueError(f"Error communicating with ToppFun API: {str(e)}")
 
-    def _process_results(self, raw_results: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-        """Process and organize ToppFun results by category."""
-        organized_results = {v: [] for v in self.category_mapping.values()}
+    def _process_results(self, raw_results: List[Dict[str, Any]]) -> Dict[str, Dict[str, Dict[str, Any]]]:
+        """Process and organize ToppFun results by category.
+        
+        Returns:
+            Dict where the keys are categories
+            Each category has a dictionary where the keys are the IDs and the values are the results
+        """
+        all_categories = ['GO:BP', 'GO:MF', 'GO:CC', 'HP', 'PATHWAY', 'PPI'] + self.additional_sources
+        organized_results = defaultdict(dict)
         
         for result in raw_results:
             if not isinstance(result, dict) or 'Category' not in result:
                 continue
                 
             category = self.category_mapping.get(result['Category'])
-            if not category:
+            if not category or category not in all_categories:
                 continue
-                
-            try:
-                cleaned_result = self._clean_result(result)
-                organized_results[category].append(cleaned_result)
-            except (ValueError, TypeError, KeyError) as e:
-                print(f"Warning: Error processing result: {e}")
-                continue
-        
-        for category in organized_results:
-            organized_results[category].sort(key=lambda x: x['p_value'])
+
+            result['Genes'] = [gene['Symbol'] for gene in result['Genes']]
+
+            # Okay things start to get tricky here.
+            # For results in the ontologies and pathways, we are going to be consolidating the results
+            # from all three tools. The ontologies have unique IDs to match between the tools, but the
+            # pathways need to use a sanitized version of the term name as the ID. So depending on where
+            # the term comes from, we'll add it to the results using the appropriate ID.
+            pathways = ['KEGG Legacy Pathways', 'Reactome Pathways', 'WikiPathways']
+            if category == 'PATHWAY':
+                if result['Source'] in pathways:
+                    # These pathway databases use "REACTOME_TERM_NAME" or "KEGG_TERM_NAME" as the name,
+                    # so we need to replace underscores with spaces and skip the first word.
+                    category = 'KEGG' if result['Source'] == 'KEGG Legacy Pathways' else 'REAC' if result['Source'] == 'Reactome Pathways' else 'WP'
+                    ID = ' '.join(result['Name'].lower().split('_')[1:])
+                    name = ID
+                elif result['Source'] == 'KEGG Medicus Pathways':
+                    # These pathway databases use "KEGG_MEDICUS_SOMETHINGELSE_TERM_NAME" as the name,
+                    # so we need to skip the first three words.
+                    category = 'KEGG'
+                    ID = ' '.join(result['Name'].lower().split('_')[3:])
+                    name = ID
+                else:
+                    continue
+            elif category == 'PPI':
+                ID = result['ID'].split(':')[1].lower()
+                name = ID
+            else:
+                ID = result['ID']
+                name = result['Name']
+
+            cleaned_result = {
+                'id': result['ID'],
+                'name': name,
+                'toppfun_p_value': result['PValue'],
+                'term_size': result['GenesInTerm'],
+                'genes': result['Genes']
+            }
+
+            
+            organized_results[category][ID] = cleaned_result
             
         return organized_results
-
-    def _clean_result(self, result: Dict[str, Any]) -> Dict[str, Any]:
-        """Clean and transform a single ToppFun result."""
-        cleaned_result = {
-            'name': result.get('Name', ''),
-            'id': result.get('ID', ''),
-            'p_value': float(result.get('PValue', 1.0)),
-            'q_value': float(result.get('QValueFDRBH', 1.0)),
-            'total_genes': int(result.get('TotalGenes', 0)),
-            'genes_in_term': int(result.get('GenesInTerm', 0)),
-            'genes_in_query': int(result.get('GenesInQuery', 0)),
-            'intersection_size': int(result.get('GenesInTermInQuery', 0)),
-            'genes': [gene.get('Symbol', '') for gene in result.get('Genes', [])],
-            'url': result.get('URL', '').strip() if result.get('URL', '').strip() != ' ' else None
-        }
-
-        return cleaned_result
-    
-    def _generate_shortlist(self, organized_results: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
-        """Generate a shortlist of the names, sources, and p-values of the top 10 results for each category."""
-        shortlist = []
-        for category in self.shortlist_categories:
-            if not organized_results[category]:
-                continue
-            for result in organized_results[category][:self.terms_per_source]:
-                shortlist.append(
-                    {
-                        'name': result['name'],
-                        'genes': result['genes'],
-                        'p_value': result['p_value'],
-                        'source': category,
-                        'tool': 'toppfun'
-                    }
-                )
-        return shortlist

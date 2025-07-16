@@ -143,11 +143,9 @@ class LiteratureAnalyzer:
                     # Initialize article with processed text and found genes
                     article = {
                         'name': processed_title,
-                        'source': 'pubmed',
-                        'tool': 'literature',
                         'year': article_data['Article']['Journal']['JournalIssue']['PubDate'].get('Year', ''),
                         'abstract': processed_abstract,
-                        'pmid': article_data['PMID'],
+                        'id': article_data['PMID'],
                         'genes': list(set(title_genes + abstract_genes))  # Initialize with genes from title/abstract
                     }
                     
@@ -155,7 +153,7 @@ class LiteratureAnalyzer:
                     link_handle = Entrez.elink(
                         dbfrom="pubmed",
                         db="pmc",
-                        id=article['pmid']
+                        id=article['id']
                     )
                     link_results = Entrez.read(link_handle)
                     link_handle.close()
@@ -204,4 +202,4 @@ class LiteratureAnalyzer:
                 print(f"Error searching literature for query {query}: {str(e)}")
                 continue
                 
-        return {'results': {'pubmed': articles}} 
+        return articles 

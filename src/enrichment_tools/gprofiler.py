@@ -1,33 +1,18 @@
 """gProfiler enrichment analysis tool integration."""
 
+from collections import defaultdict
 from typing import List, Dict, Any
 from gprofiler import GProfiler
 
 class GProfilerAnalyzer:
     """Handler for gProfiler enrichment analysis."""
     
-    def __init__(self, sources: Dict[str, str] = {}, terms_per_source: int = 10):
+    def __init__(self, additional_sources: List[str] = []):
         """Initialize the gProfiler analyzer.
         Args:
-            sources: Dictionary of gProfiler sources to use
-            terms_per_source: Number of terms to retrieve per source
+            additional_sources: List of gProfiler sources to use in addition to the default sources
         """
-        self.terms_per_source = terms_per_source
-        self.sources = {
-            "Biological Process": "GO:BP",
-            "Molecular Function": "GO:MF",
-            "Cellular Component": "GO:CC",
-            "KEGG pathways": "KEGG",
-            "Reactome": "REAC",
-            "Transcription Factors": "TF",
-            "Protein Complexes": "CORUM",
-            "Human Phenotype": "HP",
-            "Human Protein Atlas": "HPA",
-            "WikiPathways": "WP",
-            "miRNA targets": "MIRN"
-        } if not sources else sources
-
-        self.shortlist_categories = ['GO:BP', 'GO:MF', 'GO:CC', 'KEGG', 'TF']
+        self.additional_sources = additional_sources
 
     def analyze(self, genes: List[str], background_genes: List[str] = []) -> Dict[str, Any]:
         """Run gProfiler enrichment analysis and organize results by source.
@@ -49,52 +34,54 @@ class GProfilerAnalyzer:
             
         raw_results = self._run_query(genes, background_genes)
         organized_results = self._process_results(raw_results)
-        shortlist = self._generate_shortlist(organized_results)
-        
-        return {
-            "results": organized_results,
-            "shortlist": shortlist
-        }
+
+        return organized_results
 
     def _run_query(self, genes: List[str], background_genes: List[str] = []) -> List[Dict[str, Any]]:
         """Execute gProfiler enrichment query."""
         try:
             gp = GProfiler()
-            results = gp.profile(query=genes, background=background_genes)
+            if background_genes:
+                results = gp.profile(query=genes, background=background_genes)
+            else:
+                results = gp.profile(query=genes)
             if not results:
                 raise ValueError("No results returned from gProfiler")
             return results
         except Exception as e:
             raise ValueError(f"Error running gProfiler analysis: {str(e)}")
 
-    def _process_results(self, raw_results: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-        """Process and organize gProfiler results by source."""
-        organized_results = {abbrev: [] for abbrev in self.sources.values()}
+    def _process_results(self, raw_results: List[Dict[str, Any]]) -> Dict[str, Dict[str, Dict[str, Any]]]:
+        """Process and organize gProfiler results by source.
+        
+        Returns:
+            Dict where the keys are categories
+            Each category has a dictionary where the keys are the IDs and the values are the results
+        """
+        all_categories = ['GO:BP', 'GO:MF', 'GO:CC', 'HP', 'KEGG', 'REAC', 'WP'] + self.additional_sources
+        organized_results = defaultdict(dict)
         
         for result in raw_results:
             source = result.get('source')
-            if source in organized_results:
-                organized_results[source].append(result)
-        
-        for source in organized_results:
-            organized_results[source].sort(key=lambda x: x['p_value'])
+            if not source or source not in all_categories:
+                continue
+
+            # We are going to be consolidating the results from all three tools,
+            # so the pathways need to use a sanitized version of the term name as the ID.
+            pathways = ['KEGG', 'REAC', 'WP']
+            if source in pathways:
+                ID = result['name'].lower()
+            else:
+                ID = result['native']
+            
+            cleaned_result = {
+                'id': result['native'],
+                'name': result['name'],
+                'gprofiler_p_value': result['p_value'],
+                'term_size': result['term_size'],
+                'description': result['description']
+            }
+
+            organized_results[source][ID] = cleaned_result
             
         return organized_results
-
-    def _generate_shortlist(self, organized_results: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
-        """Generate a shortlist of the names, sources, and p-values of the top 10 results for each category."""
-        shortlist = []
-        for category in self.shortlist_categories:
-            if not organized_results[category]:
-                continue
-            for result in organized_results[category][:self.terms_per_source]:
-                shortlist.append(
-                    {
-                        'name': result['name'],
-                        'description': result['description'],
-                        'p_value': result['p_value'],
-                        'source': category,
-                        'tool': 'gprofiler'
-                    }
-                )
-        return shortlist
