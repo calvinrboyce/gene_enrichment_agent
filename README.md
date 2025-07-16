@@ -73,20 +73,12 @@ agent = GeneEnrichmentAgent(
     open_ai_model="gpt-4o",
     results_dir="custom_results",
     enrichr_sources={
-        "GO_Biological_Process_2025": "GO:BP",
-        "GO_Molecular_Function_2025": "GO:MF",
-        "GO_Cellular_Component_2025": "GO:CC"
+        "CellMarker_2024": "CellMarker",
+        "MSigDB_Hallmark_2020": "MSigDB-H",
+        "ChEA_2022": "ChEA"
     },
-    gprofiler_sources={
-        "Biological Process": "GO:BP",
-        "Molecular Function": "GO:MF",
-        "Cellular Component": "GO:CC"
-    },
-    toppfun_sources={
-        "GeneOntologyMolecularFunction": "GO:MF",
-        "GeneOntologyBiologicalProcess": "GO:BP",
-        "GeneOntologyCellularComponent": "GO:CC"
-    },
+    gprofiler_sources=['HPA', 'MIRNA'],
+    toppfun_sources=['TFBS', 'MicroRNA'],
     terms_per_source=20,  # Number of terms to retrieve per source
     papers_per_gene=3,    # Number of papers to retrieve per gene
     max_papers=15         # Number of papers to retrieve for full gene list
@@ -133,15 +125,7 @@ results = {
 
 ### Output Files
 
-When `save_results=True` (default), the agent creates a timestamped directory containing:
-
-- `input_params.json`: Analysis parameters and gene list
-- `enrichr_results.json`: Raw Enrichr analysis results
-- `toppfun_results.json`: Raw ToppFun analysis results  
-- `gprofiler_results.json`: Raw gProfiler analysis results
-- `literature_results.json`: Literature search results
-- `themed_results.json`: AI-synthesized themed results
-- `enrichment_analysis.xlsx`: **Excel report with all results**
+When `save_results=True` (default), the agent creates an Excel spreadsheet of the results
 
 ## Dependencies
 
@@ -165,9 +149,9 @@ Main class for running gene enrichment analysis workflows.
 - `open_ai_model` (str): OpenAI model to use (default: "gpt-4o-mini")
 - `results_dir` (str): Directory to save results (default: "gene_enrichment_analysis_results")
 - `enrichr_sources` (dict): Enrichr sources to use. Dictionary should map the name of the source (found in Enrichr's documentation) to an abbreviated version to be used in the analysis (default: {})
-- `gprofiler_sources` (dict): gProfiler sources to use. Dictionary should map the name of the source (found in gprofiler's documentation) to an abbreviated version to be used in the analysis (default: {})
-- `toppfun_sources` (dict): ToppFun sources to use. Dictionary should map the name of the source (found in ToppFun's documentation) to an abbreviated version to be used in the analysis (default: {})
-- `terms_per_source` (int): Number of terms per source (default: 15)
+- `gprofiler_sources` (list): gProfiler sources to use. List should include terms from ['TF', 'MIRNA', 'HPA', 'CORUM'] to be used in the analysis (default: [])
+- `toppfun_sources` (list): ToppFun sources to use. List should include terms from ['MousePheno', 'Domain', 'Pubmed', 'Cytoband', 'TFBS', 'GeneFamily', 'Coexpression', 'CoexpressionAtlas', 'ToppCell', 'Computational', 'MicroRNA', 'Drug', 'Disease'] to be used in the analysis (default: ['ToppCell'])
+- `terms_per_source` (int): Number of terms per source (default: 20)
 - `papers_per_gene` (int): Papers per gene for literature search (default: 2)
 - `max_papers` (int): Maximum total papers (default: 10)
 

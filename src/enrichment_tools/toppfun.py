@@ -1,7 +1,7 @@
 """ToppFun enrichment analysis tool integration."""
 
 from collections import defaultdict
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any
 import requests
 
 class ToppFunAnalyzer:
