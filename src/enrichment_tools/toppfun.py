@@ -111,7 +111,7 @@ class ToppFunAnalyzer:
             Dict where the keys are categories
             Each category has a dictionary where the keys are the IDs and the values are the results
         """
-        all_categories = ['GO:BP', 'GO:MF', 'GO:CC', 'HP', 'PATHWAY', 'PPI'] + self.additional_sources
+        all_categories = ['GO:BP', 'GO:MF', 'GO:CC', 'PATHWAY', 'PPI'] + self.additional_sources
         organized_results = defaultdict(dict)
         
         for result in raw_results:
@@ -155,7 +155,7 @@ class ToppFunAnalyzer:
             cleaned_result = {
                 'id': result['ID'],
                 'name': name,
-                'toppfun_p_value': result['PValue'],
+                'toppfun_p_value': result['QValueFDRBH'],
                 'term_size': result['GenesInTerm'],
                 'genes': result['Genes']
             }

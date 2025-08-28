@@ -46,7 +46,8 @@ class GProfilerAnalyzer:
             else:
                 results = gp.profile(query=genes)
             if not results:
-                raise ValueError("No results returned from gProfiler")
+                print("No results returned from gProfiler")
+                return []
             return results
         except Exception as e:
             raise ValueError(f"Error running gProfiler analysis: {str(e)}")
@@ -58,7 +59,7 @@ class GProfilerAnalyzer:
             Dict where the keys are categories
             Each category has a dictionary where the keys are the IDs and the values are the results
         """
-        all_categories = ['GO:BP', 'GO:MF', 'GO:CC', 'HP', 'KEGG', 'REAC', 'WP'] + self.additional_sources
+        all_categories = ['GO:BP', 'GO:MF', 'GO:CC', 'KEGG', 'REAC', 'WP'] + self.additional_sources
         organized_results = defaultdict(dict)
         
         for result in raw_results:

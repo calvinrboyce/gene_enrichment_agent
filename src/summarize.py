@@ -30,17 +30,28 @@ class SummarizeAnalyzer:
             print(f"Term {name} not found in {source} results")
             return None
     
-    def _combine_results(self, enrichr_results: Dict, toppfun_results: Dict, gprofiler_results: Dict, terms_per_source: int) -> Dict:
+    def _combine_results(self, enrichr_results: Dict, toppfun_results: Dict, gprofiler_results: Dict, terms_per_source: int, holdout: str) -> Dict:
         """Combine enrichment results from all tools."""
         # Ontologies
         combined_results = {}
 
         for tool in [enrichr_results, gprofiler_results, toppfun_results]:
             for source in tool:
+                ## TESTING
+                if source == holdout:
+                    continue
+                ## TESTING
+
                 if source not in combined_results:
                     combined_results[source] = defaultdict(dict)
 
                 for term in tool[source]:
+
+                    ## TESTING
+                    if tool[source][term]['id'] == holdout:
+                        continue
+                    ## TESTING
+
                     if term in combined_results[source]:
                         # Prefers Enrichr's name if it exists because enrichr is first
                         tool[source][term]['name'] = combined_results[source][term]['name']
@@ -65,11 +76,13 @@ class SummarizeAnalyzer:
                                enrichr_results: Dict,
                                toppfun_results: Dict,
                                gprofiler_results: Dict,
-                               literature_results: Dict,
+                               literature_results: List[Dict],
+                               gene_summaries: List[Dict],
                                terms_per_source: int,
                                genes: List[str],
                                ranked: bool,
-                               context: str) -> str:
+                               context: str,
+                               holdout: str) -> str:
         """Group enrichment results into functional themes across all tools.
         
         Args:
@@ -85,8 +98,10 @@ class SummarizeAnalyzer:
         Returns:
             Themed summary of results with each theme containing related terms
         """
-        combined_results = self._combine_results(enrichr_results, toppfun_results, gprofiler_results, terms_per_source)
+        combined_results = self._combine_results(enrichr_results, toppfun_results, gprofiler_results, terms_per_source, holdout)
         combined_results['PubMed'] = literature_results
+        if len(gene_summaries) > 0:
+            combined_results['NCBI Gene Summaries'] = gene_summaries
         barcode_dict = dict()
         barcode = 100000
         for source in combined_results:
@@ -108,18 +123,20 @@ class SummarizeAnalyzer:
 
         # Send to LLM
         prompt = f"""You will be given a list of genes identified in a study{', ranked by differential expression.' if ranked else '.'}
-        Your goal is to determine any biological functions and pathways that may be enriched in these genes, if any.
+        Your goal is to determine biological functions and pathways that may be consistently enriched in these genes, if any.
         You will also be given enrichment results from several different databases to help you with this task, including:
-            Gene Ontology (GO), Human Phenotype (HP), KEGG, Reactome (REAC), WikiPathways (WP), Protein-Protein Interactions (PPI), and more.
+            Gene Ontology (GO), Human Phenotype (HP), KEGG, Reactome (REAC), WikiPathways (WP), Protein-Protein Interactions (PPI), Gene Summaries, and more.
         You will also be given a list of papers from PubMed that may be relevant to the genes.
         Each term will have a unique barcode, which you will use to identify the term in the enrichment results.
         
-        Your task is to analyze the provided enrichment results and arrange them into functional themes.
+        Your task is to analyze the provided enrichment results and arrange them into consistent functional themes, if they exist.
         {'You should focus on themes that involve genes towards the top of the differential expression list.' if ranked else ''}
-        Feel free to delete any terms that don't coherently fit a theme.
+        Please delete any terms that don't coherently fit a theme, or that are not statistically significant.
+        Strong results often have a p-value of 1E-10 or less, and a large number of genes (anything above half the number of genes in the list, or more than 10 genes).
+        Results with a p-value of greater than 1E-5 or with a small number of genes (less than 10 or half the number of genes in the list) should be considered weak.
         For each theme, you should provide a confidence score between 0 and 1 (two decimal places), based on the strength of the evidence for the theme.
-        You should include literature terms in themes as they fit, but your final theme should be entitled "Literature Findings" and highlight
-        interesting findings from PubMed, especially if they mention multiple genes from the list.
+        If you're unsure about a theme, you should give it a confidence score of 0.5.
+        If you're not confident about a theme, you should delete it.
 
         You will return a list of themes with the following attributes:
         * theme: The name of the theme
@@ -127,16 +144,24 @@ class SummarizeAnalyzer:
         * barcodes: A list of integer barcodes, unique identifiers for the terms that are associated with the theme
         * confidence: A confidence score for the theme, between 0 and 1.
                       When determining confidence, you should consider the number of terms in the theme, the p-values of the terms, and the number of genes in the theme.
+                      Strong results often have a p-value of 1E-10 or less, and a large number of genes.
+                      Results with a p-value of greater than 1E-5 should be considered weak.
+                      Be skeptical of themes that are not statistically significant, or that have a low number of genes.
+                      Be skeptical of themes that are not consistent across the enrichment results.
         You will also provide a summary of the results, including a high level overview of what this gene list is enriched for.
+
+        You should include literature terms in themes as they fit, but your final theme should be entitled "Literature Findings" and highlight
+        interesting findings from PubMed, especially if they mention multiple genes from the list.
+        If there are no coherent or consistent themes in the enrichment results, you should indicate that in the summary and return a single theme entitled "Literature Findings" that highlights interesting findings from PubMed.
         """
         
         response = self.client.responses.parse(
             model=self.summarize_model,
             input=[
-                {"role": "system", "content": "You are an expert in bioinformatics, immunology, molecular biology, and oncology specializing in functional gene enrichment analysis."},
+                {"role": "system", "content": "You are an expert in molecular biology, immunology, oncology, and bioinformatics performing a functional enrichment analysis on a list of genes."},
                 {"role": "user", "content": prompt},
                 {"role": "user", "content": 'Context: ' + context},
-                {"role": "user", "content": 'Genes: ' + ';'.join(genes)},
+                {"role": "user", "content": 'Genes: ' + ', '.join(genes)},
                 {"role": "user", "content": 'Enrichment results:\n' + json.dumps(combined_results, indent=1)}
             ],
             text_format=LLMThemedResults
@@ -276,11 +301,13 @@ class SummarizeAnalyzer:
         summary_sheet['B13'].font = Font(bold=True)
         summary_sheet['C13'] = "Confidence"
         summary_sheet['C13'].font = Font(bold=True)
-        for i, theme in enumerate(themed_results['themes']):
-            if theme['theme'] == 'Literature Findings':
+        current_row = 14
+        for theme in themed_results['themes']:
+            if 'Literature Findings' in theme['theme']:
                 continue
-            summary_sheet['B'+str(14+i)] = theme['theme']
-            summary_sheet['C'+str(14+i)] = theme['confidence']
+            summary_sheet['B'+str(current_row)] = theme['theme']
+            summary_sheet['C'+str(current_row)] = theme['confidence']
+            current_row += 1
         
         # Adjust column widths
         summary_sheet.column_dimensions['A'].width = 20
@@ -292,7 +319,7 @@ class SummarizeAnalyzer:
         
         # Process each theme
         for theme in themed_results['themes']:
-            if theme['theme'] == 'Literature Findings':
+            if 'Literature Findings' in theme['theme']:
                 continue
             # Create new sheet for theme
             theme_sheet = wb.create_sheet(title=self._sanitize_sheet_name(theme['theme']))

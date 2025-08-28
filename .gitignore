@@ -11,7 +11,7 @@ __pycache__/
 *.so
 
 # Test files
-test.py
+# testing/
 
 # Environment variables
 .env
@@ -27,4 +27,6 @@ gene_enrichment_analysis_results/
 
 # OS files
 .DS_Store
-Thumbs.db 
+Thumbs.db db_embeddings.pkl
+*.pkl
+*.gaf

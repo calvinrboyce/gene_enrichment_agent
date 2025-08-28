@@ -21,7 +21,7 @@ class EnrichrAnalyzer:
             "GO_Cellular_Component_2025": "GO:CC",
 
             # Phenotype
-            "Human_Phenotype_Ontology": "HP",
+            # "Human_Phenotype_Ontology": "HP",
 
             # Pathways
             "KEGG_2021_Human": "KEGG",
@@ -246,7 +246,7 @@ class EnrichrAnalyzer:
                 cleaned_result = {
                     'id': ID,
                     'name': result[1],
-                    'enrichr_p_value': float(result[2]),
+                    'enrichr_p_value': float(result[6]),
                     'genes': result[5]
                 }
                 

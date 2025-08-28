@@ -21,8 +21,7 @@ class GeneEnrichmentAgent:
                  gprofiler_sources: List[str] = [],
                  toppfun_sources: List[str] = ['ToppCell'],
                  terms_per_source: int = 20,
-                 papers_per_gene: int = 2,
-                 max_papers: int = 10):
+                 num_papers: int = 10):
         """Initialize the agent with necessary tools and setup.
         Args:
             open_ai_api_key: OpenAI API key
@@ -32,15 +31,14 @@ class GeneEnrichmentAgent:
             gprofiler_sources: List of gProfiler sources to use
             toppfun_sources: List of ToppFun sources to use
             terms_per_source: Number of terms to retrieve per source
-            papers_per_gene: Number of papers to retrieve per gene
-            max_papers: Maximum number of papers to retrieve for full list
+            num_papers: Number of papers to retrieve from PubMed
         """
         self.results_dir = results_dir
         self.terms_per_source = terms_per_source
         self.enrichr = EnrichrAnalyzer(enrichr_sources)
         self.gprofiler = GProfilerAnalyzer(gprofiler_sources)
         self.toppfun = ToppFunAnalyzer(toppfun_sources)
-        self.literature = LiteratureAnalyzer(papers_per_gene, max_papers)
+        self.literature = LiteratureAnalyzer(num_papers)
         self.summarize = SummarizeAnalyzer(open_ai_api_key, open_ai_model)
 
     def run_analysis(self,
@@ -51,7 +49,8 @@ class GeneEnrichmentAgent:
                      search_terms: List[str] = [],
                      context: str = "None",
                      save_results: bool = True,
-                     analysis_name: str = None):
+                     analysis_name: str = None,
+                     holdout: str = None):
         """Run the complete analysis workflow.
         Args:
             genes: List of gene symbols to analyze
@@ -72,21 +71,6 @@ class GeneEnrichmentAgent:
                     * terms: A list of terms from the various tools that were used to identify the theme
                 * summary: A summary of the results
         """
-        # Sanitize analysis name
-        if analysis_name:
-            # Remove BOM and other invisible characters first
-            analysis_name = analysis_name.replace('\ufeff', '').replace('\u200b', '')
-            # Remove or replace characters that are problematic for file systems
-            # \/:*?"<>| are invalid on Windows, and some can cause issues on Unix systems
-            analysis_name = re.sub(r'[\\/:*?"<>|]', '_', analysis_name)
-            # Remove leading/trailing spaces and dots
-            analysis_name = analysis_name.strip(' .')
-            # Replace multiple consecutive underscores with a single one
-            analysis_name = re.sub(r'_+', '_', analysis_name)
-        else:
-            timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-            analysis_name = f"run_{timestamp}"
-        
         # Run enrichment analyses
         print("Running enrichment analyses...")
         enrichr_results = self.enrichr.analyze(genes, background_genes)
@@ -95,11 +79,14 @@ class GeneEnrichmentAgent:
 
         # Search literature
         print("Searching literature...")
-        if ranked:
-            queries = genes[:10] + [genes]
+        literature_results = self.literature.search_literature(genes, email, search_terms)
+
+        # Fetch gene summaries
+        if ranked or len(genes) <= 10:
+            print("Fetching gene summaries...")
+            gene_summaries = self.literature.fetch_gene_summaries(genes[:10])
         else:
-            queries = [genes]
-        literature_results = self.literature.search_literature(queries, email, search_terms)
+            gene_summaries = []
 
         # Group results by theme
         print("Grouping results by theme...")
@@ -107,14 +94,24 @@ class GeneEnrichmentAgent:
                                                                toppfun_results,
                                                                gprofiler_results,
                                                                literature_results,
+                                                               gene_summaries,
                                                                self.terms_per_source,
                                                                genes,
                                                                ranked,
-                                                               context)
+                                                               context,
+                                                               holdout)
 
         # Save results
         if save_results:
             print("Saving results...")
+            if analysis_name:
+                analysis_name = analysis_name.replace('\ufeff', '').replace('\u200b', '')
+                analysis_name = re.sub(r'[\\/:*?"<>|]', '_', analysis_name)
+                analysis_name = analysis_name.strip(' .')
+                analysis_name = re.sub(r'_+', '_', analysis_name)
+            else:
+                timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+                analysis_name = f"run_{timestamp}"
             os.makedirs(self.results_dir, exist_ok=True)
             self.summarize.synthesize_analysis(themed_results, genes, email, search_terms, context, analysis_name, self.results_dir)
 
