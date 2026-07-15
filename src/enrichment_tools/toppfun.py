@@ -162,5 +162,25 @@ class ToppFunAnalyzer:
 
             
             organized_results[category][ID] = cleaned_result
+        
+        # add ranks
+        for db_name, terms in organized_results.items():
+            # Sort terms as a list of (id, dict) tuples based on the p-value
+            sorted_terms = sorted(
+                terms.items(),
+                key=lambda item: item[1].get(f'toppfun_p_value', 1.0)
+            )
+
+            N = len(sorted_terms)
+
+            for i, (term_id, term_data) in enumerate(sorted_terms):
+                # Calculate the normalized rank
+                if N > 1:
+                    normalized_rank = (i+1)/N
+                else:
+                    normalized_rank = 0.0 # Handle edge case of a single term in the database
+
+                # Update the original dictionary in place
+                organized_results[db_name][term_id][f'toppfun_rank'] = normalized_rank
             
         return organized_results

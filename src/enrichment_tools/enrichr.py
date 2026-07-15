@@ -223,6 +223,7 @@ class EnrichrAnalyzer:
             Dict where the keys are the IDs and the values are the results
         """
         processed_results = defaultdict(dict)
+        N = len(raw_results)
         
         for result in raw_results:
             try:
@@ -247,7 +248,8 @@ class EnrichrAnalyzer:
                     'id': ID,
                     'name': result[1],
                     'enrichr_p_value': float(result[6]),
-                    'genes': result[5]
+                    'genes': result[5],
+                    'enrichr_rank': float(result[0])/N
                 }
                 
                 # Update with cleaned result

@@ -281,15 +281,17 @@ search_terms = ["brain", "tumor", "cancer"]
 context = "This gene list represents a cell cluster identified in a mouse GBM tumor."
 email = "cboyce3@mgh.harvard.edu"
 
-genes = ["AKIRIN2", "PELI1", "TNIP2", "CD81", "TLR9", "SH3KBP1", "IL6", "NOD2", "TICAM1", "TNFSF4"]
-genes1 = ["ID2", "SERPINE2", "BMP2", "SHH", "IL6ST", "HES1", "CLCF1", "MAG", "LIF", "NOTCH1", "BIN1"]
+# genes = ["AKIRIN2", "PELI1", "TNIP2", "CD81", "TLR9", "SH3KBP1", "IL6", "NOD2", "TICAM1", "TNFSF4"]
+# genes1 = ["ID2", "SERPINE2", "BMP2", "SHH", "IL6ST", "HES1", "CLCF1", "MAG", "LIF", "NOTCH1", "BIN1"]
 
-print(len(gea.literature.search_literature(random_genes, email, [])))
+# print(len(gea.literature.search_literature(random_genes, email, [])))
 
-# themed_results = gea.run_analysis(genes,
-#                                   email=email,
-#                                   background_genes=background_genes,
-#                                   ranked=False,
-#                                   search_terms=search_terms,
-#                                   context=context,
-#                                   analysis_name="Astrocytes")
+themed_results = gea.run_analysis(genes,
+                                  email=email,
+                                  background_genes=background_genes,
+                                  ranked=False,
+                                  search_terms=search_terms,
+                                  context=context,
+                                  save_results=False)
+
+print('done')

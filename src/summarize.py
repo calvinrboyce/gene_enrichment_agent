@@ -1,6 +1,7 @@
 """Summarization functionality for gene enrichment analysis."""
 
 import json
+import math
 from typing import Dict, List
 from openai import OpenAI
 from pydantic import BaseModel
@@ -64,10 +65,28 @@ class SummarizeAnalyzer:
 
                     combined_results[source][term].update(tool[source][term])
 
-        # Sort the results by smallest p-value
+        # Sort the results using RRA
         for source in combined_results:
             combined_results[source] = [term for term in combined_results[source].values()]
-            combined_results[source] = sorted(combined_results[source], key=lambda x: min(x.get('gprofiler_p_value', 1), x.get('toppfun_p_value', 1), x.get('enrichr_p_value', 1)))[:terms_per_source]
+
+            # Compute rho's
+            for term in combined_results[source]:
+                # get and sort ranks
+                keys = ('enrichr_rank', 'toppfun_rank', 'gprofiler_rank')
+                ranks = [term[key] for key in keys if key in term]
+                ranks.sort()
+                
+                # compute beta scores
+                n = len(ranks)
+                betas = []
+                for k in range(1, n+1):
+                    beta_k = sum([math.comb(n,l)*ranks[k-1]**l*(1-ranks[k-1])**(n-l) for l in range(k,n+1)])
+                    betas.append(beta_k)
+                
+                rho = min(betas)
+                term['rho'] = rho
+            
+            combined_results[source] = sorted(combined_results[source], key=lambda x: x.get('rho', 1))[:terms_per_source]
 
         return combined_results
         
