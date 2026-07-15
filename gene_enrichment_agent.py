@@ -15,30 +15,34 @@ class GeneEnrichmentAgent:
  
     def __init__(self,
                  open_ai_api_key: str,
+                 entrez_api_key: str,
                  open_ai_model: str = "gpt-4.1-mini",
                  results_dir: str = "gene_enrichment_analysis_results",
                  enrichr_sources: Dict[str, str] = {},
                  gprofiler_sources: List[str] = [],
                  toppfun_sources: List[str] = ['ToppCell'],
                  terms_per_source: int = 20,
-                 num_papers: int = 10):
+                 papers_per_gene: int = 2,
+                 aggregate_papers: int = 10):
         """Initialize the agent with necessary tools and setup.
         Args:
             open_ai_api_key: OpenAI API key
+            entrez_api_key: Entrez API key
             open_ai_model: OpenAI model to use
             results_dir: Directory to save results
             enrichr_sources: Dictionary of Enrichr sources to use
             gprofiler_sources: List of gProfiler sources to use
             toppfun_sources: List of ToppFun sources to use
             terms_per_source: Number of terms to retrieve per source
-            num_papers: Number of papers to retrieve from PubMed
+            papers_per_gene: Number of papers to retrieve for each gene
+            aggregate_papers: Number of papers to retrieve mentioning subsets of genes
         """
         self.results_dir = results_dir
         self.terms_per_source = terms_per_source
         self.enrichr = EnrichrAnalyzer(enrichr_sources)
         self.gprofiler = GProfilerAnalyzer(gprofiler_sources)
         self.toppfun = ToppFunAnalyzer(toppfun_sources)
-        self.literature = LiteratureAnalyzer(num_papers)
+        self.literature = LiteratureAnalyzer(entrez_api_key, papers_per_gene, aggregate_papers)
         self.summarize = SummarizeAnalyzer(open_ai_api_key, open_ai_model)
 
     def run_analysis(self,

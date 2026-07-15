@@ -12,10 +12,11 @@ import json
 class LiteratureAnalyzer:
     """Class for searching scientific literature related to genes."""
 
-    def __init__(self, num_papers: int = 20):
+    def __init__(self, entrez_api_key: str, papers_per_gene: int = 2, aggregate_papers: int = 10):
         """Initialize the literature analyzer."""
-        self.num_papers = num_papers
-        self.api_key = "c8712aecaa1a952c3d72968f66d3a8853e08"
+        self.papers_per_gene = papers_per_gene
+        self.aggregate_papers = aggregate_papers
+        self.api_key = entrez_api_key
 
     def _extract_text_from_element(self, element) -> str:
         """Extract clean text from an XML element, preserving important formatting.
@@ -91,28 +92,63 @@ class LiteratureAnalyzer:
 
         articles = []
         terms = 'AND (' + '[MeSH Terms] OR '.join(search_terms) + '[MeSH Terms]) ' if search_terms else ''
-        search_query = f"({'[tw] OR '.join(genes)}[tw]) {terms}AND 2015:3000[PDAT]"
+        pubmed_ids_set = set()
 
-        # Get PubMed IDs
-        search_handle = Entrez.esearch(
-            db="pubmed",
-            term=search_query,
-            retmax=self.num_papers,
-            sort="relevance",
-            timeout=30
-        )
+        # 1. Per-Gene Search Phase
+        if self.papers_per_gene > 0:
+            for gene in genes:
+                gene_query = f"({gene}[tw]) {terms}AND 2015:3000[PDAT]"
+                
+                done = False
+                while not done:
+                    try:
+                        search_handle = Entrez.esearch(
+                            db="pubmed",
+                            term=gene_query,
+                            retmax=self.papers_per_gene,
+                            sort="relevance",
+                            timeout=30
+                        )
+                        search_results = Entrez.read(search_handle)
+                        search_handle.close()
+                        pubmed_ids_set.update(search_results['IdList'])
+                        done = True
+                    except IncompleteRead as e:
+                        print(f"Incomplete read for {gene}: {str(e)}")
+                        time.sleep(1)
+                    except Exception as e:
+                        print(f"Error fetching for gene {gene}: {str(e)}")
+                        done = True # Skip this gene on other errors
+
+                # Respect the 10 requests/sec limit for authenticated Entrez users
+                time.sleep(0.15) 
+
+        # 2. Aggregate Search Phase
+        aggregate_query = f"({'[tw] OR '.join(genes)}[tw]) {terms}AND 2015:3000[PDAT]"
         done = False
         while not done:
             try:
+                search_handle = Entrez.esearch(
+                    db="pubmed",
+                    term=aggregate_query,
+                    retmax=self.aggregate_papers,
+                    sort="relevance",
+                    timeout=30
+                )
                 search_results = Entrez.read(search_handle)
                 search_handle.close()
+                pubmed_ids_set.update(search_results['IdList'])
                 done = True
             except IncompleteRead as e:
-                print(f"Incomplete read: {str(e)}")
+                print(f"Incomplete read for aggregate search: {str(e)}")
                 time.sleep(1)
-                continue
+            except Exception as e:
+                print(f"Error in aggregate search: {str(e)}")
+                done = True
 
-        pubmed_ids = search_results['IdList']
+        # Convert back to list for downstream fetching
+        pubmed_ids = list(pubmed_ids_set)
+        
         if not pubmed_ids:
             return []
 
@@ -137,23 +173,53 @@ class LiteratureAnalyzer:
                 continue
 
         # Batch elink to PMC to find which articles have full text
-        link_handle = Entrez.elink(
-            dbfrom="pubmed",
-            db="pmc",
-            id=pubmed_ids,
-            retmode="json",
-            timeout=30
-        )
-        link_results = json.loads(link_handle.read().decode('utf-8'))
-
-        # Build a mapping: PubMed ID -> PMC ID
         pubmed_to_pmc = {}
-        for result in link_results['linksets']:
-            pmid = result["ids"][0]
-            linkset = result.get('linksetdbs', [])
-            if linkset and 'links' in linkset[0]:
-                pmcid = linkset[0]['links'][0]
-                pubmed_to_pmc[pmid] = pmcid
+        chunk_size = 50 
+
+        # Batch elink to PMC in manageable chunks 
+        for i in range(0, len(pubmed_ids), chunk_size):
+            chunk = pubmed_ids[i:i + chunk_size]
+            chunk_str = ",".join(chunk)
+            
+            done = False
+            while not done:
+                try:
+                    link_handle = Entrez.elink(
+                        dbfrom="pubmed",
+                        db="pmc",
+                        id=chunk_str,
+                        # Removed retmode="json", defaulting to XML which is much more stable
+                        timeout=30
+                    )
+                    
+                    # Use Biopython's native XML parser
+                    link_results = Entrez.read(link_handle)
+                    link_handle.close()
+                    
+                    # Process this chunk's results using the XML dictionary structure
+                    for result in link_results:
+                        if not result.get("IdList"):
+                            continue
+                            
+                        pmid = result["IdList"][0]
+                        linksetdbs = result.get("LinkSetDb", [])
+                        
+                        for linkset in linksetdbs:
+                            # Verify the link goes to PMC and has IDs
+                            if linkset.get("DbTo") == "pmc" and linkset.get("Link"):
+                                pmcid = linkset["Link"][0]["Id"]
+                                pubmed_to_pmc[pmid] = pmcid
+                                break
+                                
+                    done = True
+                    time.sleep(0.15) # Respect rate limits
+                    
+                except IncompleteRead as e:
+                    print(f"Incomplete read in elink chunk: {str(e)}")
+                    time.sleep(1)
+                except Exception as e:
+                    print(f"Error fetching elink chunk: {str(e)}")
+                    done = True # Skip chunk on hard failure
 
         # Process each article
         for record in records['PubmedArticle']:
