@@ -39,11 +39,27 @@ class GeneEnrichmentAgent:
         """
         self.results_dir = results_dir
         self.terms_per_source = terms_per_source
+        self.papers_per_gene = papers_per_gene
+        self.aggregate_papers = aggregate_papers
         self.enrichr = EnrichrAnalyzer(enrichr_sources)
         self.gprofiler = GProfilerAnalyzer(gprofiler_sources)
         self.toppfun = ToppFunAnalyzer(toppfun_sources)
         self.literature = LiteratureAnalyzer(entrez_api_key, papers_per_gene, aggregate_papers)
         self.summarize = SummarizeAnalyzer(open_ai_api_key, open_ai_model)
+    
+    def _sanitize_analysis_name(self, analysis_name: str):
+        """Sanitize symbols in analysis name"""
+        # Remove bad symbols
+        if analysis_name:
+            analysis_name = analysis_name.replace('\ufeff', '').replace('\u200b', '')
+            analysis_name = re.sub(r'[\\/:*?"<>|]', '_', analysis_name)
+            analysis_name = analysis_name.strip(' .')
+            analysis_name = re.sub(r'_+', '_', analysis_name)
+        else:
+            timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+            analysis_name = f"run_{timestamp}"
+        
+        return analysis_name
 
     def run_analysis(self,
                      genes: List[str],
@@ -52,8 +68,8 @@ class GeneEnrichmentAgent:
                      ranked: bool=True,
                      search_terms: List[str] = [],
                      context: str = "None",
-                     save_results: bool = True,
-                     analysis_name: str = None,
+                     save_results: int = 0,
+                     analysis_name: str = '',
                      holdout: str = None):
         """Run the complete analysis workflow.
         Args:
@@ -63,7 +79,7 @@ class GeneEnrichmentAgent:
             ranked: Whether the genes are ranked by differential expression
             search_terms: List of search terms to use in the literature search
             context: Context of where the genes came from and what you're studying
-            save_results: Whether to save the results to file
+            save_results: 0 saves no results, 1 saves an excel file, 2 saves json files of all intermediate results
             analysis_name: Name of the analysis
 
         Returns:
@@ -106,17 +122,35 @@ class GeneEnrichmentAgent:
                                                                holdout)
 
         # Save results
-        if save_results:
+        if save_results > 0:
             print("Saving results...")
-            if analysis_name:
-                analysis_name = analysis_name.replace('\ufeff', '').replace('\u200b', '')
-                analysis_name = re.sub(r'[\\/:*?"<>|]', '_', analysis_name)
-                analysis_name = analysis_name.strip(' .')
-                analysis_name = re.sub(r'_+', '_', analysis_name)
-            else:
-                timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-                analysis_name = f"run_{timestamp}"
+            analysis_name = self._sanitize_analysis_name(analysis_name)
             os.makedirs(self.results_dir, exist_ok=True)
-            self.summarize.synthesize_analysis(themed_results, genes, email, search_terms, context, analysis_name, self.results_dir)
+
+            metadata = {
+                'genes': genes,
+                'email': email,
+                'search_terms': search_terms,
+                'context': context,
+                'open_ai_model': self.summarize.summarize_model,
+                'enrichr_sources': self.enrichr.sources,
+                'toppfun_sources': ['GO:BP', 'GO:MF', 'GO:CC', 'PATHWAY', 'PPI'] + self.toppfun.additional_sources,
+                'gprofiler_sources': ['GO:BP', 'GO:MF', 'GO:CC', 'KEGG', 'REAC', 'WP'] + self.gprofiler.additional_sources,
+                'terms_per_source': self.terms_per_source,
+                'papers_per_gene': self.papers_per_gene,
+                'aggregate_papers': self.aggregate_papers,
+                'background_genes': background_genes,
+                'ranked': ranked,
+            }
+            self.summarize.synthesize_analysis(themed_results, analysis_name, self.results_dir, metadata)
+        
+        if save_results > 1:
+            self.summarize.save_intermediate_results(metadata,
+                                                     enrichr_results,
+                                                     toppfun_results,
+                                                     gprofiler_results,
+                                                     literature_results,
+                                                     analysis_name,
+                                                     self.results_dir)
 
         return themed_results

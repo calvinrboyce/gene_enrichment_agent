@@ -253,12 +253,9 @@ class SummarizeAnalyzer:
 
     def synthesize_analysis(self,
                             themed_results: Dict,
-                            genes: List[str],
-                            email: str,
-                            search_terms: List[str],
-                            context: str,
                             analysis_name: str,
-                            results_dir: str) -> str:
+                            results_dir: str,
+                            metadata: Dict) -> str:
         """Synthesize themed results into an Excel file with multiple sheets.
         
         Args:
@@ -268,12 +265,9 @@ class SummarizeAnalyzer:
                         - description: Description of the theme
                         - terms: List of terms with tool-specific information
                 summary: String with description of enrichment results
-            genes: List of genes in analysis
-            email: Email provided
-            search_terms: List of search terms provided
-            context: Context provided
             analysis_name: Name of the analysis
             results_dir: String with path to results
+            metadata: Dictionary with run parameters
                 
         Returns:
             Path to the generated Excel file
@@ -290,20 +284,20 @@ class SummarizeAnalyzer:
         summary_sheet['A1'].font = Font(bold=True, size=14)
         
         summary_sheet['A3'] = "Email:"
-        summary_sheet['B3'] = email
+        summary_sheet['B3'] = metadata['email']
         summary_sheet['A3'].font = Font(bold=True)
         
         summary_sheet['A4'] = "Search Terms:"
-        summary_sheet['B4'] = ", ".join(search_terms)
+        summary_sheet['B4'] = ", ".join(metadata['search_terms'])
         summary_sheet['A4'].font = Font(bold=True)
         
         summary_sheet['A6'] = "Context:"
-        summary_sheet['B6'] = context
+        summary_sheet['B6'] = metadata['context']
         summary_sheet['A6'].font = Font(bold=True)
         summary_sheet['B6'].alignment = Alignment(wrap_text=True)
         
         summary_sheet['A8'] = "Genes:"
-        summary_sheet['B8'] = ", ".join(genes)
+        summary_sheet['B8'] = ", ".join(metadata['genes'])
         summary_sheet['A8'].font = Font(bold=True)
         summary_sheet['B8'].alignment = Alignment(wrap_text=True)
         
@@ -327,6 +321,49 @@ class SummarizeAnalyzer:
             summary_sheet['B'+str(current_row)] = theme['theme']
             summary_sheet['C'+str(current_row)] = theme['confidence']
             current_row += 1
+        
+        # Add additional metadata
+        current_row += 4
+        summary_sheet[f'A{current_row+1}'] = "Additional Metadata"
+        summary_sheet[f'A{current_row+1}'].font = Font(bold=True, size=14)
+
+        summary_sheet[f'A{current_row+3}'] = "OpenAI Model:"
+        summary_sheet[f'B{current_row+3}'] = metadata['open_ai_model']
+        summary_sheet[f'A{current_row+3}'].font = Font(bold=True)
+
+        summary_sheet[f'A{current_row+4}'] = "Enrichr Sources:"
+        summary_sheet[f'B{current_row+4}'] = str(metadata['enrichr_sources'])
+        summary_sheet[f'A{current_row+4}'].font = Font(bold=True)
+        summary_sheet[f'B{current_row+4}'].alignment = Alignment(wrap_text=True)
+
+        summary_sheet[f'A{current_row+5}'] = "ToppFun Sources:"
+        summary_sheet[f'B{current_row+5}'] = str(metadata['toppfun_sources'])
+        summary_sheet[f'A{current_row+5}'].font = Font(bold=True)
+
+        summary_sheet[f'A{current_row+6}'] = "GProfiler Sources:"
+        summary_sheet[f'B{current_row+6}'] = str(metadata['gprofiler_sources'])
+        summary_sheet[f'A{current_row+6}'].font = Font(bold=True)
+
+        summary_sheet[f'A{current_row+7}'] = "Terms Per Source"
+        summary_sheet[f'B{current_row+7}'] = metadata['terms_per_source']
+        summary_sheet[f'A{current_row+7}'].font = Font(bold=True)
+
+        summary_sheet[f'A{current_row+8}'] = "Papers Per Gene:"
+        summary_sheet[f'B{current_row+8}'] = metadata['papers_per_gene']
+        summary_sheet[f'A{current_row+8}'].font = Font(bold=True)
+
+        summary_sheet[f'A{current_row+9}'] = "Aggregate Papers:"
+        summary_sheet[f'B{current_row+9}'] = metadata['aggregate_papers']
+        summary_sheet[f'A{current_row+9}'].font = Font(bold=True)
+
+        summary_sheet[f'A{current_row+10}'] = "Background Genes:"
+        summary_sheet[f'B{current_row+10}'] = ", ".join(metadata['background_genes'])
+        summary_sheet[f'A{current_row+10}'].font = Font(bold=True)
+        summary_sheet[f'B{current_row+10}'].alignment = Alignment(wrap_text=True)
+
+        summary_sheet[f'A{current_row+11}'] = "Ranked:"
+        summary_sheet[f'B{current_row+11}'] = metadata['ranked']
+        summary_sheet[f'A{current_row+11}'].font = Font(bold=True)
         
         # Adjust column widths
         summary_sheet.column_dimensions['A'].width = 20
@@ -437,3 +474,30 @@ class SummarizeAnalyzer:
         output_path = f"{results_dir}/{analysis_name}_enrichment_analysis.xlsx"
         wb.save(output_path)
         return output_path 
+
+    def save_intermediate_results(self,
+                                  metadata: Dict,
+                                  enrichr_results: Dict,
+                                  toppfun_results: Dict,
+                                  gprofiler_results: Dict,
+                                  literature_results: Dict,
+                                  analysis_name: str,
+                                  results_dir: str) -> None:
+        """Save all intermediate results to individual JSON files"""
+        # File name
+        output_path = f"{results_dir}/{analysis_name}"
+
+        with open(output_path + "_metadata", "w") as f:
+            json.dump(metadata, f, indent=2)
+        
+        with open(output_path + "_enrichr_results", "w") as f:
+            json.dump(enrichr_results, f, indent=2)
+        
+        with open(output_path + "_toppfun_results", "w") as f:
+            json.dump(toppfun_results, f, indent=2)
+        
+        with open(output_path + "_gprofiler_results", "w") as f:
+            json.dump(gprofiler_results, f, indent=2)
+        
+        with open(output_path + "_literature_results", "w") as f:
+            json.dump(literature_results, f, indent=2)

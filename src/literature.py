@@ -174,52 +174,48 @@ class LiteratureAnalyzer:
 
         # Batch elink to PMC to find which articles have full text
         pubmed_to_pmc = {}
-        chunk_size = 50 
+        chunk_size = 150
+        idconv_url = "https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/"
 
-        # Batch elink to PMC in manageable chunks 
+        # Batch request into manageable chunks
         for i in range(0, len(pubmed_ids), chunk_size):
             chunk = pubmed_ids[i:i + chunk_size]
             chunk_str = ",".join(chunk)
+
+            params = {
+                "ids": chunk_str,
+                "format": "json",
+                "tool": "gene_enrichment_agent",
+                "email": email
+            }
             
-            done = False
-            while not done:
+            max_retries = 3
+            for attempt in range(max_retries):
                 try:
-                    link_handle = Entrez.elink(
-                        dbfrom="pubmed",
-                        db="pmc",
-                        id=chunk_str,
-                        # Removed retmode="json", defaulting to XML which is much more stable
-                        timeout=30
-                    )
+                    # Hit ID converter api
+                    response = requests.get(idconv_url, params=params, timeout=30)
+                    response.raise_for_status()
                     
-                    # Use Biopython's native XML parser
-                    link_results = Entrez.read(link_handle)
-                    link_handle.close()
+                    data = response.json()
                     
-                    # Process this chunk's results using the XML dictionary structure
-                    for result in link_results:
-                        if not result.get("IdList"):
-                            continue
-                            
-                        pmid = result["IdList"][0]
-                        linksetdbs = result.get("LinkSetDb", [])
+                    # Parse the ID Converter JSON structure
+                    for record in data.get('records', []):
+                        pmid = record.get('pmid')
+                        pmcid = record.get('pmcid')
                         
-                        for linkset in linksetdbs:
-                            # Verify the link goes to PMC and has IDs
-                            if linkset.get("DbTo") == "pmc" and linkset.get("Link"):
-                                pmcid = linkset["Link"][0]["Id"]
-                                pubmed_to_pmc[pmid] = pmcid
-                                break
-                                
-                    done = True
-                    time.sleep(0.15) # Respect rate limits
+                        # Only map if the article actually has a PMCID available
+                        if pmid and pmcid:
+                            pubmed_to_pmc[str(pmid)] = str(pmcid)
+                            
+                    time.sleep(0.15) 
+                    break 
                     
-                except IncompleteRead as e:
-                    print(f"Incomplete read in elink chunk: {str(e)}")
-                    time.sleep(1)
-                except Exception as e:
-                    print(f"Error fetching elink chunk: {str(e)}")
-                    done = True # Skip chunk on hard failure
+                except (requests.exceptions.RequestException, ValueError) as e:
+                    print(f"ID Converter issue on chunk (attempt {attempt + 1}): {str(e)}")
+                    if attempt == max_retries - 1:
+                        print(f"Skipping chunk after {max_retries} failed attempts.")
+                    else:
+                        time.sleep(2 ** attempt)
 
         # Process each article
         for record in records['PubmedArticle']:

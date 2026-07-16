@@ -10,7 +10,7 @@ dotenv.load_dotenv()
 open_ai_api_key = os.getenv("OPENAI_API_KEY")
 entrez_api_key = os.getenv("ENTREZ_API_KEY")
 
-gea = GeneEnrichmentAgent(open_ai_api_key, entrez_api_key, papers_per_gene=2)
+gea = GeneEnrichmentAgent(open_ai_api_key, entrez_api_key, papers_per_gene=0)
 
 with open("testing/background_genes.txt", "r") as f:
     background_genes = f.read().splitlines()
@@ -287,12 +287,12 @@ email = "cboyce3@mgh.harvard.edu"
 
 # print(len(gea.literature.search_literature(random_genes, email, [])))
 
-themed_results = gea.run_analysis(genes[:10],
+themed_results = gea.run_analysis(genes,
                                   email=email,
                                   background_genes=background_genes,
                                   ranked=False,
                                   search_terms=search_terms,
                                   context=context,
-                                  save_results=False)
+                                  save_results=2)
 
 print('done')
