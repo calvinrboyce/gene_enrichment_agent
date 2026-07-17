@@ -5,6 +5,7 @@ import json
 from typing import List, Dict, Any
 from datetime import datetime
 import re
+import time
 
 from src.enrichment_tools import ToppFunAnalyzer, GProfilerAnalyzer, EnrichrAnalyzer
 from src.literature import LiteratureAnalyzer
@@ -96,6 +97,7 @@ class GeneEnrichmentAgent:
                 * hallucination_metrics: Present when use_barcodes is False
         """
         # Run enrichment analyses
+        start = time.time()
         print("Running enrichment analyses...")
         enrichr_results = self.enrichr.analyze(genes, background_genes)
         toppfun_results = self.toppfun.analyze(genes)
@@ -138,6 +140,7 @@ class GeneEnrichmentAgent:
                 'search_terms': search_terms,
                 'context': context,
                 'date': datetime.now(),
+                'runtime': time.time() - start,
                 'open_ai_model': self.summarize.summarize_model,
                 'enrichr_sources': self.enrichr.sources,
                 'toppfun_sources': ['GO:BP', 'GO:MF', 'GO:CC', 'PATHWAY', 'PPI'] + self.toppfun.additional_sources,

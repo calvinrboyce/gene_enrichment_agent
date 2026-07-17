@@ -386,7 +386,12 @@ class SummarizeAnalyzer:
             clean_themed_results['hallucination_metrics'] = self._score_hallucinations(
                 clean_themed_results['themes'], id_lookup
             )
-        
+
+        clean_themed_results['token_usage'] = {
+            'input_tokens': response.usage.input_tokens,
+            'output_tokens': response.usage.output_tokens,
+            'total_tokens': response.usage.total_tokens,
+        }
 
         # Collect top statistical results
         clean_themed_results['top_statistical_results'] = []
@@ -503,52 +508,68 @@ class SummarizeAnalyzer:
             current_row += 1
         
         # Add additional metadata
-        current_row += 4
+        current_row += 5
 
-        summary_sheet[f'A{current_row+1}'] = "Additional Metadata"
-        summary_sheet[f'A{current_row+1}'].font = Font(bold=True, size=14)
+        summary_sheet[f'A{current_row}'] = "Additional Metadata"
+        summary_sheet[f'A{current_row}'].font = Font(bold=True, size=14)
+        current_row += 2
 
-        summary_sheet[f'A{current_row+3}'] = "Date and Time of Run:"
-        summary_sheet[f'B{current_row+3}'] = metadata['date']
-        summary_sheet[f'A{current_row+3}'].font = Font(bold=True)
+        summary_sheet[f'A{current_row}'] = "Date and Time of Run:"
+        summary_sheet[f'B{current_row}'] = metadata['date']
+        summary_sheet[f'A{current_row}'].font = Font(bold=True)
+        current_row += 1
 
-        summary_sheet[f'A{current_row+4}'] = "OpenAI Model:"
-        summary_sheet[f'B{current_row+4}'] = metadata['open_ai_model']
-        summary_sheet[f'A{current_row+4}'].font = Font(bold=True)
+        summary_sheet[f'A{current_row}'] = "Runtime:"
+        summary_sheet[f'B{current_row}'] = f"{metadata['runtime']:.2f} seconds"
+        summary_sheet[f'A{current_row}'].font = Font(bold=True)
+        current_row += 1
 
-        summary_sheet[f'A{current_row+5}'] = "Enrichr Sources:"
-        summary_sheet[f'B{current_row+5}'] = str(metadata['enrichr_sources'])
-        summary_sheet[f'A{current_row+5}'].font = Font(bold=True)
-        summary_sheet[f'B{current_row+5}'].alignment = Alignment(wrap_text=True)
+        summary_sheet[f'A{current_row}'] = "OpenAI Model:"
+        summary_sheet[f'B{current_row}'] = metadata['open_ai_model']
+        summary_sheet[f'A{current_row}'].font = Font(bold=True)
+        current_row += 1
 
-        summary_sheet[f'A{current_row+6}'] = "ToppFun Sources:"
-        summary_sheet[f'B{current_row+6}'] = str(metadata['toppfun_sources'])
-        summary_sheet[f'A{current_row+6}'].font = Font(bold=True)
+        summary_sheet[f'A{current_row}'] = "Input Tokens:"
+        summary_sheet[f'B{current_row}'] = metadata['token_usage']['input_tokens']
+        summary_sheet[f'A{current_row}'].font = Font(bold=True)
+        current_row += 1
 
-        summary_sheet[f'A{current_row+7}'] = "GProfiler Sources:"
-        summary_sheet[f'B{current_row+7}'] = str(metadata['gprofiler_sources'])
-        summary_sheet[f'A{current_row+7}'].font = Font(bold=True)
+        summary_sheet[f'A{current_row}'] = "Output Tokens:"
+        summary_sheet[f'B{current_row}'] = metadata['token_usage']['output_tokens']
+        summary_sheet[f'A{current_row}'].font = Font(bold=True)
+        current_row += 1
 
-        summary_sheet[f'A{current_row+8}'] = "Terms Per Source"
-        summary_sheet[f'B{current_row+8}'] = metadata['terms_per_source']
-        summary_sheet[f'A{current_row+8}'].font = Font(bold=True)
+        summary_sheet[f'A{current_row}'] = "Enrichr Sources:"
+        summary_sheet[f'B{current_row}'] = str(metadata['enrichr_sources'])
+        summary_sheet[f'A{current_row}'].font = Font(bold=True)
+        summary_sheet[f'B{current_row}'].alignment = Alignment(wrap_text=True)
+        current_row += 1
 
-        summary_sheet[f'A{current_row+9}'] = "Papers Per Gene:"
-        summary_sheet[f'B{current_row+9}'] = metadata['papers_per_gene']
-        summary_sheet[f'A{current_row+9}'].font = Font(bold=True)
+        summary_sheet[f'A{current_row}'] = "ToppFun Sources:"
+        summary_sheet[f'B{current_row}'] = str(metadata['toppfun_sources'])
+        summary_sheet[f'A{current_row}'].font = Font(bold=True)
+        current_row += 1
 
-        summary_sheet[f'A{current_row+10}'] = "Aggregate Papers:"
-        summary_sheet[f'B{current_row+10}'] = metadata['aggregate_papers']
-        summary_sheet[f'A{current_row+10}'].font = Font(bold=True)
+        summary_sheet[f'A{current_row}'] = "GProfiler Sources:"
+        summary_sheet[f'B{current_row}'] = str(metadata['gprofiler_sources'])
+        summary_sheet[f'A{current_row}'].font = Font(bold=True)
+        current_row += 1
 
-        summary_sheet[f'A{current_row+11}'] = "Background Genes:"
-        summary_sheet[f'B{current_row+11}'] = ", ".join(metadata['background_genes'])
-        summary_sheet[f'A{current_row+11}'].font = Font(bold=True)
-        summary_sheet[f'B{current_row+11}'].alignment = Alignment(wrap_text=True)
+        summary_sheet[f'A{current_row}'] = "Terms Per Source"
+        summary_sheet[f'B{current_row}'] = metadata['terms_per_source']
+        summary_sheet[f'A{current_row}'].font = Font(bold=True)
+        current_row += 1
 
-        summary_sheet[f'A{current_row+12}'] = "Ranked:"
-        summary_sheet[f'B{current_row+12}'] = metadata['ranked']
-        summary_sheet[f'A{current_row+12}'].font = Font(bold=True)
+        summary_sheet[f'A{current_row}'] = "Background Genes:"
+        summary_sheet[f'B{current_row}'] = ", ".join(metadata['background_genes'])
+        summary_sheet[f'A{current_row}'].font = Font(bold=True)
+        summary_sheet[f'B{current_row}'].alignment = Alignment(wrap_text=True)
+        current_row += 1
+
+        summary_sheet[f'A{current_row}'] = "Ranked:"
+        summary_sheet[f'B{current_row}'] = metadata['ranked']
+        summary_sheet[f'A{current_row}'].font = Font(bold=True)
+        current_row += 1
         
         # Adjust column widths
         summary_sheet.column_dimensions['A'].width = 20
