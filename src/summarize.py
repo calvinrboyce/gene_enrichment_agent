@@ -247,24 +247,24 @@ class SummarizeAnalyzer:
                 summary: str
 
             prompt = f"""You will be given a list of genes identified in a study{ranked_clause}
-        Your goal is to determine biological functions and pathways that may be consistently enriched in these genes, if any.
-        You will also be given enrichment results from several different databases to help you with this task, including:
-            Gene Ontology (GO), Human Phenotype (HP), KEGG, Reactome (REAC), WikiPathways (WP), Protein-Protein Interactions (PPI), Gene Summaries, and more.
-        You will also be given a list of papers from PubMed that may be relevant to the genes.
-        Each term will have a unique barcode, which you will use to identify the term in the enrichment results.
-        
-        {shared_task}
-        You will return a list of themes with the following attributes:
-        * theme: The name of the theme
-        * description: A brief description of the function of the theme and why you identified it (you don't need to include barcodes here)
-        * barcodes: A list of integer barcodes, unique identifiers for the terms that are associated with the theme
-        * confidence: A confidence score for the theme, between 0 and 1.
-                      When determining confidence, you should consider the number of terms in the theme, the p-values of the terms, and the number of genes in the theme.
-                      Strong results often have a p-value of 1E-10 or less, and a large number of genes.
-                      Results with a p-value of greater than 1E-5 should be considered weak.
-                      Be skeptical of themes that are not statistically significant, or that have a low number of genes.
-                      Be skeptical of themes that are not consistent across the enrichment results.
-        """
+            Your goal is to determine biological functions and pathways that may be consistently enriched in these genes, if any.
+            You will also be given enrichment results from several different databases to help you with this task, including:
+                Gene Ontology (GO), Human Phenotype (HP), KEGG, Reactome (REAC), WikiPathways (WP), Protein-Protein Interactions (PPI), Gene Summaries, and more.
+            You will also be given a list of papers from PubMed that may be relevant to the genes.
+            Each term will have a unique barcode, which you will use to identify the term in the enrichment results.
+            
+            {shared_task}
+            You will return a list of themes with the following attributes:
+            * theme: The name of the theme
+            * description: A brief description of the function of the theme and why you identified it (you don't need to include barcodes here)
+            * barcodes: A list of integer barcodes, unique identifiers for the terms that are associated with the theme
+            * confidence: A confidence score for the theme, between 0 and 1.
+                        When determining confidence, you should consider the number of terms in the theme, the p-values of the terms, and the number of genes in the theme.
+                        Strong results often have a p-value of 1E-10 or less, and a large number of genes.
+                        Results with a p-value of greater than 1E-5 should be considered weak.
+                        Be skeptical of themes that are not statistically significant, or that have a low number of genes.
+                        Be skeptical of themes that are not consistent across the enrichment results.
+            """
 
             response = self.client.responses.parse(
                 model=self.summarize_model,
@@ -301,92 +301,98 @@ class SummarizeAnalyzer:
                         temp_theme['terms'].append(term)
                 clean_themed_results['themes'].append(temp_theme)
 
-            return clean_themed_results
-
         # No-barcode ablation path: LLM reproduces term fields
-        class LLMTerm(BaseModel):
-            name: str
-            source: str
-            id: Union[str, int]
-            genes: Optional[List[str]] = None
-            enrichr_p_value: Optional[float] = None
-            toppfun_p_value: Optional[float] = None
-            gprofiler_p_value: Optional[float] = None
-            year: Optional[int] = None
+        else:
+            class LLMTerm(BaseModel):
+                name: str
+                source: str
+                id: Union[str, int]
+                genes: Optional[List[str]] = None
+                enrichr_p_value: Optional[float] = None
+                toppfun_p_value: Optional[float] = None
+                gprofiler_p_value: Optional[float] = None
+                year: Optional[int] = None
 
-        class LLMTheme(BaseModel):
-            theme: str
-            description: str
-            confidence: float
-            terms: List[LLMTerm]
+            class LLMTheme(BaseModel):
+                theme: str
+                description: str
+                confidence: float
+                terms: List[LLMTerm]
 
-        class LLMThemedResults(BaseModel):
-            themes: List[LLMTheme]
-            summary: str
+            class LLMThemedResults(BaseModel):
+                themes: List[LLMTheme]
+                summary: str
 
-        # Attach source on each term so the LLM can echo it
-        for source, terms in combined_results.items():
-            for term in terms:
-                term['source'] = source
+            # Attach source on each term so the LLM can echo it
+            for source, terms in combined_results.items():
+                for term in terms:
+                    term['source'] = source
 
-        prompt = f"""You will be given a list of genes identified in a study{ranked_clause}
-        Your goal is to determine biological functions and pathways that may be consistently enriched in these genes, if any.
-        You will also be given enrichment results from several different databases to help you with this task, including:
-            Gene Ontology (GO), Human Phenotype (HP), KEGG, Reactome (REAC), WikiPathways (WP), Protein-Protein Interactions (PPI), Gene Summaries, and more.
-        You will also be given a list of papers from PubMed that may be relevant to the genes.
-        Each enrichment term includes identifying fields such as name, source, and id. When you associate a term with a theme, you must reproduce those fields exactly as given.
-        
-        {shared_task}
-        You will return a list of themes with the following attributes:
-        * theme: The name of the theme
-        * description: A brief description of the function of the theme and why you identified it
-        * terms: A list of term objects associated with the theme. For each term, reproduce:
-            - name (required)
-            - source (required)
-            - id (required; copy exactly from the enrichment results)
-            - genes (include when present in the enrichment results)
-            - enrichr_p_value, toppfun_p_value, and/or gprofiler_p_value (include each p-value that is present in the enrichment results; omit keys that are absent; copy values accurately)
-            - year (for PubMed terms)
-        * confidence: A confidence score for the theme, between 0 and 1.
-                      When determining confidence, you should consider the number of terms in the theme, the p-values of the terms, and the number of genes in the theme.
-                      Strong results often have a p-value of 1E-10 or less, and a large number of genes.
-                      Results with a p-value of greater than 1E-5 should be considered weak.
-                      Be skeptical of themes that are not statistically significant, or that have a low number of genes.
-                      Be skeptical of themes that are not consistent across the enrichment results.
-        """
+            prompt = f"""You will be given a list of genes identified in a study{ranked_clause}
+            Your goal is to determine biological functions and pathways that may be consistently enriched in these genes, if any.
+            You will also be given enrichment results from several different databases to help you with this task, including:
+                Gene Ontology (GO), Human Phenotype (HP), KEGG, Reactome (REAC), WikiPathways (WP), Protein-Protein Interactions (PPI), Gene Summaries, and more.
+            You will also be given a list of papers from PubMed that may be relevant to the genes.
+            Each enrichment term includes identifying fields such as name, source, and id. When you associate a term with a theme, you must reproduce those fields exactly as given.
+            
+            {shared_task}
+            You will return a list of themes with the following attributes:
+            * theme: The name of the theme
+            * description: A brief description of the function of the theme and why you identified it
+            * terms: A list of term objects associated with the theme. For each term, reproduce:
+                - name (required)
+                - source (required)
+                - id (required; copy exactly from the enrichment results)
+                - genes (include when present in the enrichment results)
+                - enrichr_p_value, toppfun_p_value, and/or gprofiler_p_value (include each p-value that is present in the enrichment results; omit keys that are absent; copy values accurately)
+                - year (for PubMed terms)
+            * confidence: A confidence score for the theme, between 0 and 1.
+                        When determining confidence, you should consider the number of terms in the theme, the p-values of the terms, and the number of genes in the theme.
+                        Strong results often have a p-value of 1E-10 or less, and a large number of genes.
+                        Results with a p-value of greater than 1E-5 should be considered weak.
+                        Be skeptical of themes that are not statistically significant, or that have a low number of genes.
+                        Be skeptical of themes that are not consistent across the enrichment results.
+            """
 
-        response = self.client.responses.parse(
-            model=self.summarize_model,
-            input=[
-                {"role": "system", "content": "You are an expert in molecular biology, immunology, oncology, and bioinformatics performing a functional enrichment analysis on a list of genes."},
-                {"role": "user", "content": prompt},
-                {"role": "user", "content": 'Context: ' + context},
-                {"role": "user", "content": 'Genes: ' + ', '.join(genes)},
-                {"role": "user", "content": 'Enrichment results:\n' + json.dumps(combined_results, indent=1)}
-            ],
-            text_format=LLMThemedResults
-        )
+            response = self.client.responses.parse(
+                model=self.summarize_model,
+                input=[
+                    {"role": "system", "content": "You are an expert in molecular biology, immunology, oncology, and bioinformatics performing a functional enrichment analysis on a list of genes."},
+                    {"role": "user", "content": prompt},
+                    {"role": "user", "content": 'Context: ' + context},
+                    {"role": "user", "content": 'Genes: ' + ', '.join(genes)},
+                    {"role": "user", "content": 'Enrichment results:\n' + json.dumps(combined_results, indent=1)}
+                ],
+                text_format=LLMThemedResults
+            )
 
-        themed_results = response.output_parsed
-        themed_results.themes = sorted(themed_results.themes, key=lambda x: x.confidence, reverse=True)
+            themed_results = response.output_parsed
+            themed_results.themes = sorted(themed_results.themes, key=lambda x: x.confidence, reverse=True)
 
-        clean_themed_results = {
-            'summary': themed_results.summary,
-            'themes': []
-        }
-        for theme in themed_results.themes:
-            temp_theme = {
-                'theme': theme.theme,
-                'description': theme.description,
-                'confidence': theme.confidence,
-                'terms': [term.model_dump(exclude_none=True) for term in theme.terms]
+            clean_themed_results = {
+                'summary': themed_results.summary,
+                'themes': []
             }
-            clean_themed_results['themes'].append(temp_theme)
+            for theme in themed_results.themes:
+                temp_theme = {
+                    'theme': theme.theme,
+                    'description': theme.description,
+                    'confidence': theme.confidence,
+                    'terms': [term.model_dump(exclude_none=True) for term in theme.terms]
+                }
+                clean_themed_results['themes'].append(temp_theme)
 
-        id_lookup = self._build_id_lookup(combined_results)
-        clean_themed_results['hallucination_metrics'] = self._score_hallucinations(
-            clean_themed_results['themes'], id_lookup
-        )
+            id_lookup = self._build_id_lookup(combined_results)
+            clean_themed_results['hallucination_metrics'] = self._score_hallucinations(
+                clean_themed_results['themes'], id_lookup
+            )
+        
+
+        # Collect top statistical results
+        clean_themed_results['top_statistical_results'] = []
+        for source, terms in combined_results.items():
+            clean_themed_results['top_statistical_results'].append(terms[0])
+
         return clean_themed_results
 
     def _sanitize_sheet_name(self, name: str, max_length: int = 31) -> str:
