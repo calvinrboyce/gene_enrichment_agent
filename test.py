@@ -293,6 +293,9 @@ themed_results = gea.run_analysis(genes,
                                   ranked=False,
                                   search_terms=search_terms,
                                   context=context,
-                                  save_results=2)
+                                  save_results=0,
+                                  use_barcodes=True)
+
+breakpoint()
 
 print('done')

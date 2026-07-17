@@ -2,12 +2,15 @@
 
 import json
 import math
-from typing import Dict, List
+from typing import Any, Dict, List, Optional, Union
 from openai import OpenAI
 from pydantic import BaseModel
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment
 from collections import defaultdict
+
+PVALUE_KEYS = ('enrichr_p_value', 'toppfun_p_value', 'gprofiler_p_value')
+ID_ONLY_SOURCES = {'PubMed', 'NCBI Gene Summaries'}
 
 class SummarizeAnalyzer:
     """Class for summarizing gene enrichment analysis results."""
@@ -89,7 +92,84 @@ class SummarizeAnalyzer:
             combined_results[source] = sorted(combined_results[source], key=lambda x: x.get('rho', 1))[:terms_per_source]
 
         return combined_results
-        
+
+    @staticmethod
+    def _sigfig_equal(a: float, b: float, n: int = 3) -> bool:
+        """Compare two floats after rounding to n significant figures."""
+        return f"{a:.{n}g}" == f"{b:.{n}g}"
+
+    @staticmethod
+    def _register_id(lookup: Dict[Any, Dict], term_id: Any, term: Dict) -> None:
+        """Index a term under its id and common type coercions."""
+        lookup[term_id] = term
+        lookup[str(term_id)] = term
+        if isinstance(term_id, str) and term_id.isdigit():
+            lookup[int(term_id)] = term
+
+    def _build_id_lookup(self, combined_results: Dict) -> Dict[Any, Dict]:
+        """Map term ids (with type coercions) to ground-truth terms."""
+        lookup: Dict[Any, Dict] = {}
+        for source, terms in combined_results.items():
+            for term in terms:
+                term_with_source = {**term, 'source': source}
+                self._register_id(lookup, term['id'], term_with_source)
+        return lookup
+
+    def _score_hallucinations(self, themes: List[Dict], id_lookup: Dict[Any, Dict]) -> Dict:
+        """Score term-id and p-value hallucinations against ground truth."""
+        term_hallucinations = 0
+        terms_total = 0
+        pvalue_hallucinations = 0
+        pvalue_fields_checked = 0
+        details = []
+
+        for theme in themes:
+            for term in theme['terms']:
+                terms_total += 1
+                term_id = term.get('id')
+                gt_term = id_lookup.get(term_id)
+
+                if gt_term is None:
+                    term_hallucinations += 1
+                    details.append({'type': 'term', 'id': term_id, 'source': term.get('source')})
+                    continue
+
+                source = gt_term.get('source')
+                if source in ID_ONLY_SOURCES:
+                    continue
+
+                for key in PVALUE_KEYS:
+                    llm_has = key in term and term[key] is not None
+                    gt_has = key in gt_term and gt_term[key] is not None
+                    if not llm_has and not gt_has:
+                        continue
+
+                    pvalue_fields_checked += 1
+                    if llm_has and not gt_has:
+                        pvalue_hallucinations += 1
+                        details.append({'type': 'pvalue_extra', 'id': term_id, 'field': key, 'llm': term[key]})
+                    elif gt_has and not llm_has:
+                        pvalue_hallucinations += 1
+                        details.append({'type': 'pvalue_omitted', 'id': term_id, 'field': key, 'gt': gt_term[key]})
+                    elif not self._sigfig_equal(float(term[key]), float(gt_term[key])):
+                        pvalue_hallucinations += 1
+                        details.append({
+                            'type': 'pvalue_mismatch',
+                            'id': term_id,
+                            'field': key,
+                            'llm': term[key],
+                            'gt': gt_term[key],
+                        })
+
+        return {
+            'term_hallucinations': term_hallucinations,
+            'terms_total': terms_total,
+            'term_hallucination_rate': (term_hallucinations / terms_total) if terms_total else 0.0,
+            'pvalue_hallucinations': pvalue_hallucinations,
+            'pvalue_fields_checked': pvalue_fields_checked,
+            'pvalue_hallucination_rate': (pvalue_hallucinations / pvalue_fields_checked) if pvalue_fields_checked else 0.0,
+            'details': details,
+        }
 
     def group_results_by_theme(self,
                                enrichr_results: Dict,
@@ -101,7 +181,8 @@ class SummarizeAnalyzer:
                                genes: List[str],
                                ranked: bool,
                                context: str,
-                               holdout: str) -> str:
+                               holdout: str,
+                               use_barcodes: bool = True) -> Dict:
         """Group enrichment results into functional themes across all tools.
         
         Args:
@@ -113,43 +194,25 @@ class SummarizeAnalyzer:
             genes: List of genes to analyze
             ranked: If the genes are ranked
             context: Additional user context
+            holdout: Source or term id to exclude (testing)
+            use_barcodes: If True, LLM returns barcodes; if False, LLM reproduces term fields
             
         Returns:
-            Themed summary of results with each theme containing related terms
+            Themed summary of results with each theme containing related terms.
+            When use_barcodes is False, also includes hallucination_metrics.
         """
         combined_results = self._combine_results(enrichr_results, toppfun_results, gprofiler_results, terms_per_source, holdout)
         combined_results['PubMed'] = literature_results
         if len(gene_summaries) > 0:
             combined_results['NCBI Gene Summaries'] = gene_summaries
-        barcode_dict = dict()
-        barcode = 100000
-        for source in combined_results:
-            for i, term in enumerate(combined_results[source]):
-                term['barcode'] = barcode
-                barcode_dict[barcode] = (source, i, term.pop('id'))
-                barcode += 1
 
-        # Pydantic model for output
-        class LLMTheme(BaseModel):
-            theme: str
-            description: str
-            confidence: float
-            barcodes: List[int]
-
-        class LLMThemedResults(BaseModel):
-            themes: List[LLMTheme]
-            summary: str
-
-        # Send to LLM
-        prompt = f"""You will be given a list of genes identified in a study{', ranked by differential expression.' if ranked else '.'}
-        Your goal is to determine biological functions and pathways that may be consistently enriched in these genes, if any.
-        You will also be given enrichment results from several different databases to help you with this task, including:
-            Gene Ontology (GO), Human Phenotype (HP), KEGG, Reactome (REAC), WikiPathways (WP), Protein-Protein Interactions (PPI), Gene Summaries, and more.
-        You will also be given a list of papers from PubMed that may be relevant to the genes.
-        Each term will have a unique barcode, which you will use to identify the term in the enrichment results.
-        
-        Your task is to analyze the provided enrichment results and arrange them into consistent functional themes, if they exist.
-        {'You should focus on themes that involve genes towards the top of the differential expression list.' if ranked else ''}
+        ranked_clause = ', ranked by differential expression.' if ranked else '.'
+        focus_clause = (
+            'You should focus on themes that involve genes towards the top of the differential expression list.'
+            if ranked else ''
+        )
+        shared_task = f"""Your task is to analyze the provided enrichment results and arrange them into consistent functional themes, if they exist.
+        {focus_clause}
         Please delete any terms that don't coherently fit a theme, or that are not statistically significant.
         Strong results often have a p-value of 1E-10 or less, and a large number of genes (anything above half the number of genes in the list, or more than 10 genes).
         Results with a p-value of greater than 1E-5 or with a small number of genes (less than 10 or half the number of genes in the list) should be considered weak.
@@ -157,6 +220,40 @@ class SummarizeAnalyzer:
         If you're unsure about a theme, you should give it a confidence score of 0.5.
         If you're not confident about a theme, you should delete it.
 
+        You will also provide a summary of the results, including a high level overview of what this gene list is enriched for.
+
+        You should include literature terms in themes as they fit, but your final theme should be entitled "Literature Findings" and highlight
+        interesting findings from PubMed, especially if they mention multiple genes from the list.
+        If there are no coherent or consistent themes in the enrichment results, you should indicate that in the summary and return a single theme entitled "Literature Findings" that highlights interesting findings from PubMed.
+        """
+
+        if use_barcodes:
+            barcode_dict = dict()
+            barcode = 100000
+            for source in combined_results:
+                for i, term in enumerate(combined_results[source]):
+                    term['barcode'] = barcode
+                    barcode_dict[barcode] = (source, i, term.pop('id'))
+                    barcode += 1
+
+            class LLMTheme(BaseModel):
+                theme: str
+                description: str
+                confidence: float
+                barcodes: List[int]
+
+            class LLMThemedResults(BaseModel):
+                themes: List[LLMTheme]
+                summary: str
+
+            prompt = f"""You will be given a list of genes identified in a study{ranked_clause}
+        Your goal is to determine biological functions and pathways that may be consistently enriched in these genes, if any.
+        You will also be given enrichment results from several different databases to help you with this task, including:
+            Gene Ontology (GO), Human Phenotype (HP), KEGG, Reactome (REAC), WikiPathways (WP), Protein-Protein Interactions (PPI), Gene Summaries, and more.
+        You will also be given a list of papers from PubMed that may be relevant to the genes.
+        Each term will have a unique barcode, which you will use to identify the term in the enrichment results.
+        
+        {shared_task}
         You will return a list of themes with the following attributes:
         * theme: The name of the theme
         * description: A brief description of the function of the theme and why you identified it (you don't need to include barcodes here)
@@ -167,13 +264,97 @@ class SummarizeAnalyzer:
                       Results with a p-value of greater than 1E-5 should be considered weak.
                       Be skeptical of themes that are not statistically significant, or that have a low number of genes.
                       Be skeptical of themes that are not consistent across the enrichment results.
-        You will also provide a summary of the results, including a high level overview of what this gene list is enriched for.
-
-        You should include literature terms in themes as they fit, but your final theme should be entitled "Literature Findings" and highlight
-        interesting findings from PubMed, especially if they mention multiple genes from the list.
-        If there are no coherent or consistent themes in the enrichment results, you should indicate that in the summary and return a single theme entitled "Literature Findings" that highlights interesting findings from PubMed.
         """
+
+            response = self.client.responses.parse(
+                model=self.summarize_model,
+                input=[
+                    {"role": "system", "content": "You are an expert in molecular biology, immunology, oncology, and bioinformatics performing a functional enrichment analysis on a list of genes."},
+                    {"role": "user", "content": prompt},
+                    {"role": "user", "content": 'Context: ' + context},
+                    {"role": "user", "content": 'Genes: ' + ', '.join(genes)},
+                    {"role": "user", "content": 'Enrichment results:\n' + json.dumps(combined_results, indent=1)}
+                ],
+                text_format=LLMThemedResults
+            )
+
+            themed_results = response.output_parsed
+            themed_results.themes = sorted(themed_results.themes, key=lambda x: x.confidence, reverse=True)
+
+            clean_themed_results = {
+                'summary': themed_results.summary,
+                'themes': []
+            }
+            for theme in themed_results.themes:
+                temp_theme = {
+                    'theme': theme.theme,
+                    'description': theme.description,
+                    'confidence': theme.confidence,
+                    'terms': []
+                }
+                for barcode in theme.barcodes:
+                    if barcode in barcode_dict:
+                        source, i, term_id = barcode_dict[barcode]
+                        term = combined_results[source][i]
+                        term['id'] = term_id
+                        term['source'] = source
+                        temp_theme['terms'].append(term)
+                clean_themed_results['themes'].append(temp_theme)
+
+            return clean_themed_results
+
+        # No-barcode ablation path: LLM reproduces term fields
+        class LLMTerm(BaseModel):
+            name: str
+            source: str
+            id: Union[str, int]
+            genes: Optional[List[str]] = None
+            enrichr_p_value: Optional[float] = None
+            toppfun_p_value: Optional[float] = None
+            gprofiler_p_value: Optional[float] = None
+            year: Optional[int] = None
+
+        class LLMTheme(BaseModel):
+            theme: str
+            description: str
+            confidence: float
+            terms: List[LLMTerm]
+
+        class LLMThemedResults(BaseModel):
+            themes: List[LLMTheme]
+            summary: str
+
+        # Attach source on each term so the LLM can echo it
+        for source, terms in combined_results.items():
+            for term in terms:
+                term['source'] = source
+
+        prompt = f"""You will be given a list of genes identified in a study{ranked_clause}
+        Your goal is to determine biological functions and pathways that may be consistently enriched in these genes, if any.
+        You will also be given enrichment results from several different databases to help you with this task, including:
+            Gene Ontology (GO), Human Phenotype (HP), KEGG, Reactome (REAC), WikiPathways (WP), Protein-Protein Interactions (PPI), Gene Summaries, and more.
+        You will also be given a list of papers from PubMed that may be relevant to the genes.
+        Each enrichment term includes identifying fields such as name, source, and id. When you associate a term with a theme, you must reproduce those fields exactly as given.
         
+        {shared_task}
+        You will return a list of themes with the following attributes:
+        * theme: The name of the theme
+        * description: A brief description of the function of the theme and why you identified it
+        * terms: A list of term objects associated with the theme. For each term, reproduce:
+            - name (required)
+            - source (required)
+            - id (required; copy exactly from the enrichment results)
+            - genes (include when present in the enrichment results)
+            - enrichr_p_value, toppfun_p_value, and/or gprofiler_p_value (include each p-value that is present in the enrichment results; omit keys that are absent; copy values accurately)
+            - year (for PubMed terms)
+        * confidence: A confidence score for the theme, between 0 and 1.
+                      When determining confidence, you should consider the number of terms in the theme, the p-values of the terms, and the number of genes in the theme.
+                      Strong results often have a p-value of 1E-10 or less, and a large number of genes.
+                      Results with a p-value of greater than 1E-5 should be considered weak.
+                      Be skeptical of themes that are not statistically significant, or that have a low number of genes.
+                      Be skeptical of themes that are not consistent across the enrichment results.
+        """
+
         response = self.client.responses.parse(
             model=self.summarize_model,
             input=[
@@ -187,12 +368,8 @@ class SummarizeAnalyzer:
         )
 
         themed_results = response.output_parsed
+        themed_results.themes = sorted(themed_results.themes, key=lambda x: x.confidence, reverse=True)
 
-        # Sort themes by confidence
-        sorted_themes = sorted(themed_results.themes, key=lambda x: x.confidence, reverse=True)
-        themed_results.themes = sorted_themes
-
-        # Get full terms from barcodes
         clean_themed_results = {
             'summary': themed_results.summary,
             'themes': []
@@ -202,17 +379,14 @@ class SummarizeAnalyzer:
                 'theme': theme.theme,
                 'description': theme.description,
                 'confidence': theme.confidence,
-                'terms': []
+                'terms': [term.model_dump(exclude_none=True) for term in theme.terms]
             }
-            for barcode in theme.barcodes:
-                if barcode in barcode_dict:
-                    source, i, term_id = barcode_dict[barcode]
-                    term = combined_results[source][i]
-                    term['id'] = term_id
-                    term['source'] = source
-                    temp_theme['terms'].append(term)
             clean_themed_results['themes'].append(temp_theme)
 
+        id_lookup = self._build_id_lookup(combined_results)
+        clean_themed_results['hallucination_metrics'] = self._score_hallucinations(
+            clean_themed_results['themes'], id_lookup
+        )
         return clean_themed_results
 
     def _sanitize_sheet_name(self, name: str, max_length: int = 31) -> str:

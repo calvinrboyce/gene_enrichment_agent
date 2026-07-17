@@ -23,7 +23,7 @@ class GeneEnrichmentAgent:
                  toppfun_sources: List[str] = ['ToppCell'],
                  terms_per_source: int = 20,
                  papers_per_gene: int = 2,
-                 aggregate_papers: int = 20):
+                 aggregate_papers: int = 15):
         """Initialize the agent with necessary tools and setup.
         Args:
             open_ai_api_key: OpenAI API key
@@ -70,7 +70,8 @@ class GeneEnrichmentAgent:
                      context: str = "None",
                      save_results: int = 0,
                      analysis_name: str = '',
-                     holdout: str = None):
+                     holdout: str = None,
+                     use_barcodes: bool = True):
         """Run the complete analysis workflow.
         Args:
             genes: List of gene symbols to analyze
@@ -81,6 +82,8 @@ class GeneEnrichmentAgent:
             context: Context of where the genes came from and what you're studying
             save_results: 0 saves no results, 1 saves an excel file, 2 saves json files of all intermediate results
             analysis_name: Name of the analysis
+            use_barcodes: If True, LLM identifies terms by barcode; if False, LLM reproduces
+                term fields and hallucination rates are attached to the return value
 
         Returns:
             Themed results: A dictionary of themed results with the following keys:
@@ -90,6 +93,7 @@ class GeneEnrichmentAgent:
                     * confidence: A confidence score for the theme, between 0 and 1
                     * terms: A list of terms from the various tools that were used to identify the theme
                 * summary: A summary of the results
+                * hallucination_metrics: Present when use_barcodes is False
         """
         # Run enrichment analyses
         print("Running enrichment analyses...")
@@ -99,12 +103,12 @@ class GeneEnrichmentAgent:
 
         # Search literature
         print("Searching literature...")
-        literature_results = self.literature.search_literature(genes, email, search_terms)
+        literature_results = self.literature.search_literature(genes, email, search_terms, ranked)
 
         # Fetch gene summaries
-        if ranked or len(genes) <= 10:
+        if ranked or len(genes) <= 15:
             print("Fetching gene summaries...")
-            gene_summaries = self.literature.fetch_gene_summaries(genes[:10])
+            gene_summaries = self.literature.fetch_gene_summaries(genes[:15])
         else:
             gene_summaries = []
 
@@ -119,7 +123,8 @@ class GeneEnrichmentAgent:
                                                                genes,
                                                                ranked,
                                                                context,
-                                                               holdout)
+                                                               holdout,
+                                                               use_barcodes=use_barcodes)
 
         # Save results
         if save_results > 0:

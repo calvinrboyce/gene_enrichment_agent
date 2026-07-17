@@ -12,7 +12,7 @@ import json
 class LiteratureAnalyzer:
     """Class for searching scientific literature related to genes."""
 
-    def __init__(self, entrez_api_key: str, papers_per_gene: int = 2, aggregate_papers: int = 20):
+    def __init__(self, entrez_api_key: str, papers_per_gene: int = 2, aggregate_papers: int = 15):
         """Initialize the literature analyzer."""
         self.papers_per_gene = papers_per_gene
         self.aggregate_papers = aggregate_papers
@@ -83,7 +83,8 @@ class LiteratureAnalyzer:
     def search_literature(self,
                           genes: List[str],
                           email: str,
-                          search_terms: List[str]) -> List[Dict[str, Any]]:
+                          search_terms: List[str],
+                          ranked: bool = True) -> List[Dict[str, Any]]:
         """Search for scientific articles related to the gene list using PubMed."""
 
         Entrez.email = email
@@ -95,8 +96,20 @@ class LiteratureAnalyzer:
         pubmed_ids_set = set()
 
         # 1. Per-Gene Search Phase
+        per_gene_search = ranked or len(genes) <= 15 or self.papers_per_gene > 0
+        # If the genes are ranked or there are less than 15 genes, search the top 15 genes
+        if ranked or len(genes) <= 15:
+            genes_to_search = genes[:15]
+            papers_per_gene = 2
+        # If papers_per_gene is greater than 0, search all genes
         if self.papers_per_gene > 0:
-            for gene in genes:
+            if len(genes) > 30:
+                print(f"Warning: Searching {self.papers_per_gene} papers per gene for {len(genes)} genes may overwhelm the context window of the LLM.")
+            genes_to_search = genes
+            papers_per_gene = self.papers_per_gene
+        
+        if per_gene_search:
+            for gene in genes_to_search:
                 gene_query = f"({gene}[tw]) {terms}AND 2015:3000[PDAT]"
                 
                 done = False
@@ -105,7 +118,7 @@ class LiteratureAnalyzer:
                         search_handle = Entrez.esearch(
                             db="pubmed",
                             term=gene_query,
-                            retmax=self.papers_per_gene,
+                            retmax=papers_per_gene,
                             sort="relevance",
                             timeout=30
                         )
