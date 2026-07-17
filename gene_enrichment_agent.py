@@ -23,7 +23,7 @@ class GeneEnrichmentAgent:
                  toppfun_sources: List[str] = ['ToppCell'],
                  terms_per_source: int = 20,
                  papers_per_gene: int = 2,
-                 aggregate_papers: int = 10):
+                 aggregate_papers: int = 20):
         """Initialize the agent with necessary tools and setup.
         Args:
             open_ai_api_key: OpenAI API key
@@ -132,6 +132,7 @@ class GeneEnrichmentAgent:
                 'email': email,
                 'search_terms': search_terms,
                 'context': context,
+                'date': datetime.now(),
                 'open_ai_model': self.summarize.summarize_model,
                 'enrichr_sources': self.enrichr.sources,
                 'toppfun_sources': ['GO:BP', 'GO:MF', 'GO:CC', 'PATHWAY', 'PPI'] + self.toppfun.additional_sources,

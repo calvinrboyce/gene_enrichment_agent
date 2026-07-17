@@ -324,46 +324,51 @@ class SummarizeAnalyzer:
         
         # Add additional metadata
         current_row += 4
+
         summary_sheet[f'A{current_row+1}'] = "Additional Metadata"
         summary_sheet[f'A{current_row+1}'].font = Font(bold=True, size=14)
 
-        summary_sheet[f'A{current_row+3}'] = "OpenAI Model:"
-        summary_sheet[f'B{current_row+3}'] = metadata['open_ai_model']
+        summary_sheet[f'A{current_row+3}'] = "Date and Time of Run:"
+        summary_sheet[f'B{current_row+3}'] = metadata['date']
         summary_sheet[f'A{current_row+3}'].font = Font(bold=True)
 
-        summary_sheet[f'A{current_row+4}'] = "Enrichr Sources:"
-        summary_sheet[f'B{current_row+4}'] = str(metadata['enrichr_sources'])
+        summary_sheet[f'A{current_row+4}'] = "OpenAI Model:"
+        summary_sheet[f'B{current_row+4}'] = metadata['open_ai_model']
         summary_sheet[f'A{current_row+4}'].font = Font(bold=True)
-        summary_sheet[f'B{current_row+4}'].alignment = Alignment(wrap_text=True)
 
-        summary_sheet[f'A{current_row+5}'] = "ToppFun Sources:"
-        summary_sheet[f'B{current_row+5}'] = str(metadata['toppfun_sources'])
+        summary_sheet[f'A{current_row+5}'] = "Enrichr Sources:"
+        summary_sheet[f'B{current_row+5}'] = str(metadata['enrichr_sources'])
         summary_sheet[f'A{current_row+5}'].font = Font(bold=True)
+        summary_sheet[f'B{current_row+5}'].alignment = Alignment(wrap_text=True)
 
-        summary_sheet[f'A{current_row+6}'] = "GProfiler Sources:"
-        summary_sheet[f'B{current_row+6}'] = str(metadata['gprofiler_sources'])
+        summary_sheet[f'A{current_row+6}'] = "ToppFun Sources:"
+        summary_sheet[f'B{current_row+6}'] = str(metadata['toppfun_sources'])
         summary_sheet[f'A{current_row+6}'].font = Font(bold=True)
 
-        summary_sheet[f'A{current_row+7}'] = "Terms Per Source"
-        summary_sheet[f'B{current_row+7}'] = metadata['terms_per_source']
+        summary_sheet[f'A{current_row+7}'] = "GProfiler Sources:"
+        summary_sheet[f'B{current_row+7}'] = str(metadata['gprofiler_sources'])
         summary_sheet[f'A{current_row+7}'].font = Font(bold=True)
 
-        summary_sheet[f'A{current_row+8}'] = "Papers Per Gene:"
-        summary_sheet[f'B{current_row+8}'] = metadata['papers_per_gene']
+        summary_sheet[f'A{current_row+8}'] = "Terms Per Source"
+        summary_sheet[f'B{current_row+8}'] = metadata['terms_per_source']
         summary_sheet[f'A{current_row+8}'].font = Font(bold=True)
 
-        summary_sheet[f'A{current_row+9}'] = "Aggregate Papers:"
-        summary_sheet[f'B{current_row+9}'] = metadata['aggregate_papers']
+        summary_sheet[f'A{current_row+9}'] = "Papers Per Gene:"
+        summary_sheet[f'B{current_row+9}'] = metadata['papers_per_gene']
         summary_sheet[f'A{current_row+9}'].font = Font(bold=True)
 
-        summary_sheet[f'A{current_row+10}'] = "Background Genes:"
-        summary_sheet[f'B{current_row+10}'] = ", ".join(metadata['background_genes'])
+        summary_sheet[f'A{current_row+10}'] = "Aggregate Papers:"
+        summary_sheet[f'B{current_row+10}'] = metadata['aggregate_papers']
         summary_sheet[f'A{current_row+10}'].font = Font(bold=True)
-        summary_sheet[f'B{current_row+10}'].alignment = Alignment(wrap_text=True)
 
-        summary_sheet[f'A{current_row+11}'] = "Ranked:"
-        summary_sheet[f'B{current_row+11}'] = metadata['ranked']
+        summary_sheet[f'A{current_row+11}'] = "Background Genes:"
+        summary_sheet[f'B{current_row+11}'] = ", ".join(metadata['background_genes'])
         summary_sheet[f'A{current_row+11}'].font = Font(bold=True)
+        summary_sheet[f'B{current_row+11}'].alignment = Alignment(wrap_text=True)
+
+        summary_sheet[f'A{current_row+12}'] = "Ranked:"
+        summary_sheet[f'B{current_row+12}'] = metadata['ranked']
+        summary_sheet[f'A{current_row+12}'].font = Font(bold=True)
         
         # Adjust column widths
         summary_sheet.column_dimensions['A'].width = 20

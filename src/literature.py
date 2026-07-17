@@ -12,7 +12,7 @@ import json
 class LiteratureAnalyzer:
     """Class for searching scientific literature related to genes."""
 
-    def __init__(self, entrez_api_key: str, papers_per_gene: int = 2, aggregate_papers: int = 10):
+    def __init__(self, entrez_api_key: str, papers_per_gene: int = 2, aggregate_papers: int = 20):
         """Initialize the literature analyzer."""
         self.papers_per_gene = papers_per_gene
         self.aggregate_papers = aggregate_papers
