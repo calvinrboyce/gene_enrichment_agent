@@ -17,23 +17,25 @@ else:
     device = "cpu"
 
 # load tokenizer and model
-tokenizer = AutoTokenizer.from_pretrained("cambridgeltl/SapBERT-from-PubMedBERT-fulltext")  
-model = AutoModel.from_pretrained("cambridgeltl/SapBERT-from-PubMedBERT-fulltext").to(device)
+tokenizer = AutoTokenizer.from_pretrained("FremyCompany/BioLORD-2023")  
+model = AutoModel.from_pretrained("FremyCompany/BioLORD-2023").to(device)
 
 def embed_terms(terms):
     """
-    Embed terms using SapBERT.
+    Embed terms using BioLORD.
     """
 
     # embed terms
     bs = 32 # batch size during inference
     all_embs = []
     for i in np.arange(0, len(terms), bs):
-        toks = tokenizer.batch_encode_plus(terms[i:i+bs], 
-                                        padding="max_length", 
-                                        max_length=25, 
-                                        truncation=True,
-                                        return_tensors="pt")
+        toks = tokenizer(
+            terms[i:i+bs],
+            padding="max_length",
+            max_length=25,
+            truncation=True,
+            return_tensors="pt",
+        )
         toks_cuda = {}
         for k,v in toks.items():
             toks_cuda[k] = v.to(device)

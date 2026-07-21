@@ -23,7 +23,7 @@ class GeneEnrichmentAgent:
                  gprofiler_sources: List[str] = [],
                  toppfun_sources: List[str] = ['ToppCell'],
                  terms_per_source: int = 20,
-                 papers_per_gene: int = 2,
+                 papers_per_gene: int = 0,
                  aggregate_papers: int = 15):
         """Initialize the agent with necessary tools and setup.
         Args:
@@ -83,6 +83,7 @@ class GeneEnrichmentAgent:
             context: Context of where the genes came from and what you're studying
             save_results: 0 saves no results, 1 saves an excel file, 2 saves json files of all intermediate results
             analysis_name: Name of the analysis
+            holdout: Name of the holdout set to use for validation
             use_barcodes: If True, LLM identifies terms by barcode; if False, LLM reproduces
                 term fields and hallucination rates are attached to the return value
 
@@ -98,13 +99,13 @@ class GeneEnrichmentAgent:
         """
         # Run enrichment analyses
         start = time.time()
-        print("Running enrichment analyses...")
+        # print("Running enrichment analyses...")
         enrichr_results = self.enrichr.analyze(genes, background_genes)
         toppfun_results = self.toppfun.analyze(genes)
         gprofiler_results = self.gprofiler.analyze(genes, background_genes)
 
         # Search literature
-        print("Searching literature...")
+        # print("Searching literature...")
         literature_results = self.literature.search_literature(genes, email, search_terms, ranked)
 
         # Fetch gene summaries
@@ -115,7 +116,7 @@ class GeneEnrichmentAgent:
             gene_summaries = []
 
         # Group results by theme
-        print("Grouping results by theme...")
+        # print("Grouping results by theme...")
         themed_results = self.summarize.group_results_by_theme(enrichr_results,
                                                                toppfun_results,
                                                                gprofiler_results,

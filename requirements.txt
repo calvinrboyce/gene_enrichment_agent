@@ -12,3 +12,4 @@ pronto>=1.0.0
 torch
 transformers
 tqdm
+networkx
