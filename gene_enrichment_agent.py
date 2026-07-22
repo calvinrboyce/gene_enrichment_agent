@@ -110,7 +110,7 @@ class GeneEnrichmentAgent:
 
         # Fetch gene summaries
         if ranked or len(genes) <= 15:
-            print("Fetching gene summaries...")
+            # print("Fetching gene summaries...")
             gene_summaries = self.literature.fetch_gene_summaries(genes[:15])
         else:
             gene_summaries = []

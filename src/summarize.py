@@ -36,6 +36,9 @@ class SummarizeAnalyzer:
     
     def _combine_results(self, enrichr_results: Dict, toppfun_results: Dict, gprofiler_results: Dict, terms_per_source: int, holdout: str) -> Dict:
         """Combine enrichment results from all tools."""
+        # Collect top statistical results
+        top_statistical_results = []
+        
         # Ontologies
         combined_results = {}
 
@@ -49,12 +52,16 @@ class SummarizeAnalyzer:
                 if source not in combined_results:
                     combined_results[source] = defaultdict(dict)
 
+                found_top = False
                 for term in tool[source]:
 
                     ## TESTING
                     if tool[source][term]['id'] == holdout:
                         continue
                     ## TESTING
+                    if not found_top:
+                        top_statistical_results.append(tool[source][term])
+                        found_top = True
 
                     if term in combined_results[source]:
                         # Prefers Enrichr's name if it exists because enrichr is first
@@ -91,7 +98,7 @@ class SummarizeAnalyzer:
             
             combined_results[source] = sorted(combined_results[source], key=lambda x: x.get('rho', 1))[:terms_per_source]
 
-        return combined_results
+        return combined_results, top_statistical_results
 
     @staticmethod
     def _sigfig_equal(a: float, b: float, n: int = 3) -> bool:
@@ -201,7 +208,11 @@ class SummarizeAnalyzer:
             Themed summary of results with each theme containing related terms.
             When use_barcodes is False, also includes hallucination_metrics.
         """
-        combined_results = self._combine_results(enrichr_results, toppfun_results, gprofiler_results, terms_per_source, holdout)
+        combined_results, top_statistical_results = self._combine_results(enrichr_results,
+                                                                          toppfun_results,
+                                                                          gprofiler_results,
+                                                                          terms_per_source,
+                                                                          holdout)
         combined_results['PubMed'] = literature_results
         if len(gene_summaries) > 0:
             combined_results['NCBI Gene Summaries'] = gene_summaries
@@ -394,9 +405,7 @@ class SummarizeAnalyzer:
         }
 
         # Collect top statistical results
-        clean_themed_results['top_statistical_results'] = []
-        for source, terms in combined_results.items():
-            clean_themed_results['top_statistical_results'].append(terms[0])
+        clean_themed_results['top_statistical_results'] = top_statistical_results
 
         return clean_themed_results
 

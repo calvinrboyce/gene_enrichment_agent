@@ -1,5 +1,5 @@
 # from testing.go import get_go_terms
-from testing.sapbert import embed_terms
+from testing.embedding import embed_terms
 from gene_enrichment_agent import GeneEnrichmentAgent
 import os
 import dotenv
@@ -9,8 +9,9 @@ import pickle
 import json
 import random
 import time
+import networkx as nx
 
-def validation_scheme(test_cases, database_terms, holdout, validation_name):
+def validation_scheme(test_cases, database_terms, holdout, validation_name, go_graph=None):
     # we changed this function for each of the experiments to accomodate the different databases
     error_log = []
 
@@ -38,6 +39,7 @@ def validation_scheme(test_cases, database_terms, holdout, validation_name):
     print("Running enrichment agent on test cases")
     dotenv.load_dotenv()
     open_ai_api_key = os.getenv("OPENAI_API_KEY")
+    entrez_api_key = os.getenv("ENTREZ_API_KEY")
 
     # for msigdb
     # enrichr_sources = {
@@ -45,17 +47,16 @@ def validation_scheme(test_cases, database_terms, holdout, validation_name):
     #     "ChEA_2022": "ChEA"
     # }
 
-    gea = GeneEnrichmentAgent(open_ai_api_key, num_papers=20)
+    gea = GeneEnrichmentAgent(open_ai_api_key, entrez_api_key)
     email = "cboyce3@mgh.harvard.edu"
     i = -1
     for test_case in tqdm(test_cases):
         i += 1
         try:
-            start = time.time()
             # context = "Include a theme for likely cell type"
             test_case["enrichment_results"] = gea.run_analysis(test_case["genes"], email, ranked=False, save_results=False, holdout=holdout)
             test_case["theme_embeddings"] = embed_terms(["Name: " + theme["theme"] + ". Description: " + theme["description"] for theme in test_case["enrichment_results"]["themes"]])
-            test_case["inference_time"] = time.time() - start
+            test_case["control_embeddings"] = embed_terms(["Name: " + result["name"] for result in test_case["enrichment_results"]["top_statistical_results"]])
         except Exception as e:
             error_log.append(test_case["name"])
             continue
@@ -100,7 +101,30 @@ def validation_scheme(test_cases, database_terms, holdout, validation_name):
         test_case["cosine_similarities"] = np.dot(ys, yhat) / (np.linalg.norm(ys, axis=1) * np.linalg.norm(yhat))
         actual_similarity = test_case["cosine_similarities"][y_index]
         percentile = (np.sum(test_case["cosine_similarities"] <= actual_similarity) - 1) / (len(test_case["cosine_similarities"]) - 1)
+        test_case["sem_sim"] = actual_similarity
         test_case["percentile"] = percentile
+
+        # closest GO term
+        if validation_name == "go":
+            closest_go_idx = np.argmax(test_case["cosine_similarities"])
+            closest_go_term = database_terms[closest_go_idx]["id"]
+            distance = nx.shortest_path_length(go_graph, source=closest_go_term, target=test_case["id"])
+            test_case["ontological_distance"] = distance
+
+        ## CONTROL SIMILARITY
+        # find the raw result most similar to the correct term
+        yhats = test_case["control_embeddings"]
+        cosine_similarities = np.dot(yhats, y) / (np.linalg.norm(y) * np.linalg.norm(yhats, axis=1))
+        yhat_index = np.argmax(cosine_similarities)
+        yhat = yhats[yhat_index]
+        test_case["most_similar_control"] = test_case["enrichment_results"]["top_statistical_results"][yhat_index]
+
+        # find the percentile of the control similarity
+        test_case["control_cosine_similarities"] = np.dot(ys, yhat) / (np.linalg.norm(ys, axis=1) * np.linalg.norm(yhat))
+        actual_similarity = test_case["control_cosine_similarities"][y_index]
+        percentile = (np.sum(test_case["control_cosine_similarities"] <= actual_similarity) - 1) / (len(test_case["control_cosine_similarities"]) - 1)
+        test_case["control_sem_sim"] = actual_similarity
+        test_case["control_percentile"] = percentile
 
         # save as we go
         if not i % 10:
