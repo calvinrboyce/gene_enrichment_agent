@@ -28,8 +28,8 @@ def get_go_terms(ontology_file, namespace, num_terms=100, min_genes=5, seed=42):
     propagated_go_to_genes = defaultdict(set)
     
     for term in ontology.terms():
-        # Only process terms in your target namespace
-        if term.id.startswith("GO:") and term.namespace == namespace:
+        # Only process terms in your target namespace and skip obsolete terms
+        if term.id.startswith("GO:") and term.namespace == namespace and not term.obsolete:
             terms.append({
                 'id': term.id,
                 'name': term.name,

@@ -13,3 +13,4 @@ torch
 transformers
 tqdm
 networkx
+scipy

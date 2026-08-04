@@ -36,11 +36,12 @@ class ToppFunAnalyzer:
 
         self.additional_sources = [self.category_mapping[source] for source in additional_sources]
 
-    def analyze(self, genes: List[str]) -> Dict[str, Any]:
+    def analyze(self, genes: List[str], background_genes: List[str] = []) -> Dict[str, Any]:
         """Run ToppFun enrichment analysis and organize results by category.
         
         Args:
             genes: List of gene symbols to analyze
+            background_genes: List of background genes to use for the enrichment analysis
             
         Returns:
             Dict containing:
@@ -56,7 +57,11 @@ class ToppFunAnalyzer:
             raise ValueError("Gene list cannot be empty")
         
         entrez_ids = self._lookup_entrez_ids(genes)
-        raw_results = self._run_enrichment(entrez_ids)
+        background_ids = []
+        if background_genes:
+            background_ids = self._lookup_entrez_ids(background_genes)
+
+        raw_results = self._run_enrichment(entrez_ids, background_ids)
         organized_results = self._process_results(raw_results)
         
         return organized_results
@@ -75,6 +80,9 @@ class ToppFunAnalyzer:
             if not isinstance(gene_info, dict) or 'Genes' not in gene_info:
                 raise ValueError("Invalid response format from ToppGene lookup API")
             
+            if not gene_info['Genes']:
+                raise ValueError("No valid Entrez IDs found for provided genes")
+            
             entrez_ids = [gene['Entrez'] for gene in gene_info['Genes'] if 'Entrez' in gene]
             
             if not entrez_ids:
@@ -85,13 +93,17 @@ class ToppFunAnalyzer:
         except requests.RequestException as e:
             raise ValueError(f"Error communicating with ToppGene API: {str(e)}")
 
-    def _run_enrichment(self, entrez_ids: List[int]) -> List[Dict[str, Any]]:
+    def _run_enrichment(self, entrez_ids: List[int], background_ids: List[int] = []) -> List[Dict[str, Any]]:
         """Run ToppFun enrichment analysis with Entrez IDs."""
         try:
+            query_json = {'Genes': entrez_ids}
+            if background_ids:
+                query_json['Background'] = background_ids
+            
             response = requests.post(
                 "https://toppgene.cchmc.org/API/enrich", 
-                json={'Genes': entrez_ids},
-                timeout=30
+                json=query_json,
+                timeout=120
             )
             response.raise_for_status()
             result_data = response.json()

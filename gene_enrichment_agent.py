@@ -17,7 +17,7 @@ class GeneEnrichmentAgent:
     def __init__(self,
                  open_ai_api_key: str,
                  entrez_api_key: str,
-                 open_ai_model: str = "gpt-4.1-mini",
+                 open_ai_model: str = "gpt-5-mini",
                  results_dir: str = "gene_enrichment_analysis_results",
                  enrichr_sources: Dict[str, str] = {},
                  gprofiler_sources: List[str] = [],
@@ -101,7 +101,7 @@ class GeneEnrichmentAgent:
         start = time.time()
         # print("Running enrichment analyses...")
         enrichr_results = self.enrichr.analyze(genes, background_genes)
-        toppfun_results = self.toppfun.analyze(genes)
+        toppfun_results = self.toppfun.analyze(genes, background_genes)
         gprofiler_results = self.gprofiler.analyze(genes, background_genes)
 
         # Search literature
@@ -128,6 +128,7 @@ class GeneEnrichmentAgent:
                                                                context,
                                                                holdout,
                                                                use_barcodes=use_barcodes)
+        themed_results['runtime'] = time.time() - start
 
         # Save results
         if save_results > 0:
@@ -141,7 +142,7 @@ class GeneEnrichmentAgent:
                 'search_terms': search_terms,
                 'context': context,
                 'date': datetime.now(),
-                'runtime': time.time() - start,
+                'runtime': themed_results['runtime'],
                 'open_ai_model': self.summarize.summarize_model,
                 'enrichr_sources': self.enrichr.sources,
                 'toppfun_sources': ['GO:BP', 'GO:MF', 'GO:CC', 'PATHWAY', 'PPI'] + self.toppfun.additional_sources,

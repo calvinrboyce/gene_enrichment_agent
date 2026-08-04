@@ -1,103 +1,176 @@
 import pickle
-import matplotlib.pyplot as plt
-import json
-from testing.sapbert import embed_terms
-from gene_enrichment_agent import GeneEnrichmentAgent
-import os
-import time
-import dotenv
 import numpy as np
-from tqdm import tqdm
+from scipy import stats
 
-def fill_errors(results_dir):
-    # we changed this function for each of the experiments to accomodate the different databases
-    with open(results_dir + "/error_log1.txt", "r") as f:
-        error_log = f.readlines()
-    error_log = [error.strip() for error in error_log]
-    new_error_log = []
+with open("barcoding/results_with_descriptions.pkl", "rb") as f:
+    results = pickle.load(f)
 
-    # load test cases
-    with open(results_dir + "/results1.pkl", "rb") as f:
-        test_cases = pickle.load(f)
+term_hallucination_rates = [t['enrichment_results']['hallucination_metrics']['term_hallucination_rate'] for t in results if 'enrichment_results' in t]
+pvalue_hallucination_rates = [t['enrichment_results']['hallucination_metrics']['pvalue_hallucination_rate'] for t in results if 'enrichment_results' in t]
+runtimes = [t['enrichment_results']['runtime'] for t in results if 'enrichment_results' in t]
+total_tokens = [t['enrichment_results']['token_usage']['total_tokens'] for t in results if 'enrichment_results' in t]
 
-    # embed database terms
-    with open(results_dir + "/name_to_index.pkl", "rb") as f:
-        db_name_to_index = pickle.load(f)
-    with open(results_dir + "/db_embeddings.pkl", "rb") as f:
-        db_embeddings = pickle.load(f)
+def print_summary_statistics(data):
+    # 1. Calculate the Mean
+    mean_rate = np.mean(data)
 
-    # run enrichment_agent on test_cases
-    print("Running enrichment agent on test cases")
-    dotenv.load_dotenv()
-    open_ai_api_key = os.getenv("OPENAI_API_KEY")
+    # 2. Calculate the Median (50th percentile)
+    median_rate = np.median(data)
 
-    # for msigdb
-    # enrichr_sources = {
-    #     "CellMarker_2024": "CellMarker",
-    #     "ChEA_2022": "ChEA"
-    # }
+    # 3. Calculate the 95th Percentile (tail risk)
+    p95_rate = np.percentile(data, 95)
 
-    gea = GeneEnrichmentAgent(open_ai_api_key, num_papers=20)
-    email = "cboyce3@mgh.harvard.edu"
-    for test_case in tqdm(test_cases):
-        if test_case["name"] not in error_log:
-            continue
-        try:
-            start = time.time()
-            # context = "Include a theme for likely cell type"
-            test_case["enrichment_results"] = gea.run_analysis(test_case["genes"], email, ranked=False, save_results=False, holdout='REAC')
-            test_case["theme_embeddings"] = embed_terms(["Name: " + theme["theme"] + ". Description: " + theme["description"] for theme in test_case["enrichment_results"]["themes"]])
-            test_case["inference_time"] = time.time() - start
-        except Exception as e:
-            print(e)
-            new_error_log.append(test_case["name"])
-            continue
-    
-    # save the error log
-    print("Saving error log")
-    with open(results_dir + "/error_log2.txt", "w") as f:
-        for error in new_error_log:
-            f.write(error + "\n")
-    
-    # compute cosine similarities
-    print("Computing cosine similarities and percentiles")
-    for test_case in tqdm(test_cases):
-        if test_case["name"] in new_error_log:
-            continue
-        ys = db_embeddings
-        if test_case["name"].endswith(" (50/50 mix)") or test_case["name"].endswith(" (random)"):
-            y_index = db_name_to_index[test_case["name"].rsplit(" (", 1)[0]]
-        else:
-            y_index = db_name_to_index[test_case["name"]]
-        y = ys[y_index]
-        yhats = test_case["theme_embeddings"]
+    # 4. Calculate the Bootstrapped 95% Confidence Interval for the mean
+    # scipy.stats.bootstrap expects the data in a sequence, so we pass it as a tuple: (rates,)
+    bootstrap_ci = stats.bootstrap(
+        (data,), 
+        statistic=np.mean, 
+        confidence_level=0.95,
+        method='BCa'  # Bias-corrected and accelerated method (great for skewed data)
+    )
 
-        # find the theme most similar to the correct GO term
-        cosine_similarities = np.dot(yhats, y) / (np.linalg.norm(y) * np.linalg.norm(yhats, axis=1))
-        yhat_index = np.argmax(cosine_similarities)
-        yhat = yhats[yhat_index]
-        test_case["most_similar_theme"] = test_case["enrichment_results"]["themes"][yhat_index]
+    ci_lower = bootstrap_ci.confidence_interval.low
+    ci_upper = bootstrap_ci.confidence_interval.high
 
-        # find the percentile of the actual similarity in the list of cosine similarities
-        test_case["cosine_similarities"] = np.dot(ys, yhat) / (np.linalg.norm(ys, axis=1) * np.linalg.norm(yhat))
-        actual_similarity = test_case["cosine_similarities"][y_index]
-        percentile = (np.sum(test_case["cosine_similarities"] <= actual_similarity)-1) / (len(test_case["cosine_similarities"]) -1)
-        test_case["percentile"] = percentile
+    # Print the formatted results
+    print(f"Mean:            {mean_rate}")
+    print(f"95% CI (Mean):   [{ci_lower}, {ci_upper}]")
+    print(f"Median:          {median_rate}")
+    print(f"95th Percentile: {p95_rate}")
 
-    # save the test cases
-    try:
-        print("Saving test cases")
-        with open(results_dir + "/results1.pkl", "wb") as f:
-            pickle.dump(test_cases, f)
-    except Exception as e:
-        print("Final pickling failed")
-        return
-    
-    return test_cases
+# print('Term Statistics')
+# print_summary_statistics(term_hallucination_rates)
+# print()
+# print('P-value Statistics')
+# print_summary_statistics(pvalue_hallucination_rates)
+# print()
+# print('Runtime Statistics')
+# print_summary_statistics(runtimes)
+# print()
+# print('Token Usage Statistics')
+# print_summary_statistics(total_tokens)
+# print()
 
-# fill_errors("nonsense")
+with open('go/results_with_descriptions.pkl', 'rb') as f:
+    go_results = pickle.load(f)
 
-with open("nonsense/name_to_index.pkl", "rb") as f:
-    name_to_index = pickle.load(f)
+with open('msigdb/results_with_descriptions.pkl', 'rb') as f:
+    msigdb_results = pickle.load(f)
 
-print(name_to_index.keys())
+with open('reactome/results_with_descriptions.pkl', 'rb') as f:
+    reactome_results = pickle.load(f)
+
+with open('panglao/results_with_descriptions.pkl', 'rb') as f:
+    panglao_results = pickle.load(f)
+
+with open('shortlist/results_with_descriptions.pkl', 'rb') as f:
+    shortlist_results = pickle.load(f)
+
+control_runtimes = []
+control_runtimes.extend([t['enrichment_results']['runtime'] for t in go_results if 'enrichment_results' in t])
+control_runtimes.extend([t['enrichment_results']['runtime'] for t in msigdb_results if 'enrichment_results' in t])
+control_runtimes.extend([t['enrichment_results']['runtime'] for t in reactome_results if 'enrichment_results' in t])
+control_runtimes.extend([t['enrichment_results']['runtime'] for t in panglao_results if 'enrichment_results' in t])
+control_runtimes.extend([t['enrichment_results']['runtime'] for t in shortlist_results if 'enrichment_results' in t])
+
+# print('Control Runtime Statistics')
+# print_summary_statistics(control_runtimes)
+# print()
+
+control_input_token_usage = []
+control_input_token_usage.extend([t['enrichment_results']['token_usage']['input_tokens'] for t in go_results if 'enrichment_results' in t])
+control_input_token_usage.extend([t['enrichment_results']['token_usage']['input_tokens'] for t in msigdb_results if 'enrichment_results' in t])
+control_input_token_usage.extend([t['enrichment_results']['token_usage']['input_tokens'] for t in reactome_results if 'enrichment_results' in t])
+control_input_token_usage.extend([t['enrichment_results']['token_usage']['input_tokens'] for t in panglao_results if 'enrichment_results' in t])
+control_input_token_usage.extend([t['enrichment_results']['token_usage']['input_tokens'] for t in shortlist_results if 'enrichment_results' in t])
+
+# print('Control Input Token Usage Statistics')
+# print_summary_statistics(control_input_token_usage)
+# print()
+
+control_output_token_usage = []
+control_output_token_usage.extend([t['enrichment_results']['token_usage']['output_tokens'] for t in go_results if 'enrichment_results' in t])
+control_output_token_usage.extend([t['enrichment_results']['token_usage']['output_tokens'] for t in msigdb_results if 'enrichment_results' in t])
+control_output_token_usage.extend([t['enrichment_results']['token_usage']['output_tokens'] for t in reactome_results if 'enrichment_results' in t])
+control_output_token_usage.extend([t['enrichment_results']['token_usage']['output_tokens'] for t in panglao_results if 'enrichment_results' in t])
+control_output_token_usage.extend([t['enrichment_results']['token_usage']['output_tokens'] for t in shortlist_results if 'enrichment_results' in t])
+
+# print('Control Output Token Usage Statistics')
+# print_summary_statistics(control_output_token_usage)
+# print()
+
+control_total_token_usage = []
+control_total_token_usage.extend([t['enrichment_results']['token_usage']['total_tokens'] for t in go_results if 'enrichment_results' in t])
+control_total_token_usage.extend([t['enrichment_results']['token_usage']['total_tokens'] for t in msigdb_results if 'enrichment_results' in t])
+control_total_token_usage.extend([t['enrichment_results']['token_usage']['total_tokens'] for t in reactome_results if 'enrichment_results' in t])
+control_total_token_usage.extend([t['enrichment_results']['token_usage']['total_tokens'] for t in panglao_results if 'enrichment_results' in t])
+control_total_token_usage.extend([t['enrichment_results']['token_usage']['total_tokens'] for t in shortlist_results if 'enrichment_results' in t])
+
+# print('Control Total Token Usage Statistics')
+# print(len(control_total_token_usage))
+# print_summary_statistics(control_total_token_usage)
+# print()
+
+def print_results(results):
+    sem_sims = [t['sem_sim'] for t in results if 'sem_sim' in t]
+    percentiles = [t['percentile'] for t in results if 'percentile' in t]
+    control_sem_sims = [t['control_sem_sim'] for t in results if 'control_sem_sim' in t]
+    control_percentiles = [t['control_percentile'] for t in results if 'control_percentile' in t]
+    ontological_distances = [t['ontological_distance'] for t in results if 'ontological_distance' in t]
+
+    print('Sem Sims')
+    print_summary_statistics(sem_sims)
+    print()
+    print('Percentiles')
+    print_summary_statistics(percentiles)
+    print()
+    print('Control Sem Sims')
+    print_summary_statistics(control_sem_sims)
+    print()
+    print('Control Percentiles')
+    print_summary_statistics(control_percentiles)
+    print()
+    print('Ontological Distances')
+    if ontological_distances:
+        print_summary_statistics(ontological_distances)
+    else:
+        print('No ontological distances available')
+    print()
+    recovered_terms = (np.array(percentiles)>=.95).sum()
+    total_terms_tested = len(percentiles)
+
+    # Calculate the exact binomial test (defaults to 95% confidence level)
+    result = stats.binomtest(k=recovered_terms, n=total_terms_tested)
+
+    # Extract the Clopper-Pearson confidence interval
+    ci_lower, ci_upper = result.proportion_ci(confidence_level=0.95)
+
+    print(f"Recovery Rate: {recovered_terms / total_terms_tested:.1%}")
+    print(f"95% CI:        [{ci_lower:.1%}, {ci_upper:.1%}]")
+
+# print('Shortlist')
+# print_results(shortlist_results)
+
+
+global_percentiles = []
+# global_percentiles.extend([t['percentile'] for t in go_results if 'percentile' in t])
+# global_percentiles.extend([t['percentile'] for t in msigdb_results if 'percentile' in t])
+# global_percentiles.extend([t['percentile'] for t in reactome_results if 'percentile' in t])
+# global_percentiles.extend([t['percentile'] for t in panglao_results if 'percentile' in t])
+global_percentiles.extend([t['percentile'] for t in shortlist_results if 'percentile' in t])
+
+print('Global Percentiles')
+print(len(global_percentiles))
+print_summary_statistics(global_percentiles)
+print()
+recovered_terms = (np.array(global_percentiles)>=.95).sum()
+total_terms_tested = len(global_percentiles)
+
+# Calculate the exact binomial test (defaults to 95% confidence level)
+result = stats.binomtest(k=recovered_terms, n=total_terms_tested)
+
+# Extract the Clopper-Pearson confidence interval
+ci_lower, ci_upper = result.proportion_ci(confidence_level=0.95)
+
+print(f"Recovery Rate: {recovered_terms / total_terms_tested:.1%}")
+print(f"95% CI:        [{ci_lower:.1%}, {ci_upper:.1%}]")
